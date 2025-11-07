@@ -8,6 +8,7 @@ DEBUG = False
 # Lấy SECRET_KEY từ biến môi trường
 SECRET_KEY = os.environ.get('SECRET_KEY')
 if not SECRET_KEY:
+    # Nếu SECRET_KEY không tồn tại, Django sẽ báo lỗi này
     raise ValueError("SECRET_KEY environment variable not set.")
 
 # Render set ALLOWED_HOSTS tự động qua biến môi trường
@@ -22,10 +23,10 @@ DATABASES = {
     'default': dj_database_url.config(
         default=os.environ.get('DATABASE_URL'),
         conn_max_age=600,
-        # QUAN TRỌNG: Cần thiết lập SSL cho Render PostgreSQL
+        # QUAN TRỌNG: Kích hoạt kiểm tra sức khỏe và yêu cầu SSL
         conn_health_checks=True,
-        # Nếu gặp lỗi SSL, hãy thử thêm ssl_require
-        # options={'sslmode': 'require'}, 
+        # BẮT BUỘC CHO RENDER: Yêu cầu kết nối SSL
+        options={'sslmode': 'require'}, 
     )
 }
 
