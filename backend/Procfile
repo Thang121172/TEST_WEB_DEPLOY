@@ -1,0 +1,12 @@
+# backend/Procfile
+
+# Tiến trình Web chính (Gunicorn)
+# Trỏ đến backend.core.wsgi:application
+web: gunicorn core.wsgi:application --bind 0.0.0.0:$PORT
+
+# Tiến trình Celery Worker (Task bất đồng bộ)
+# Trỏ đến backend.core.celery_app
+worker: celery -A core worker -l info
+
+# Tiến trình Celery Beat (Lập lịch tác vụ)
+beat: celery -A core beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler

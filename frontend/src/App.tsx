@@ -1,5 +1,5 @@
 import React from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
 import Header from './components/Header'
 import './index.css'
 
@@ -13,52 +13,64 @@ import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
 import PaymentMethods from './pages/PaymentMethods'
 import PaymentCard from './pages/PaymentCard'
+import VerifyOTP from './pages/VerifyOTP'
 
-// Merchant pages
 import MerchantDashboard from './pages/Merchant/MerchantDashboard'
 import MerchantConfirmOrder from './pages/Merchant/MerchantConfirmOrder'
 import RegisterStore from './pages/Merchant/RegisterStore'
 
-import { AuthProvider } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import RoleGate from './components/RoleGate'
 
-export default function App(){
+export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <div className="app-shell">
-          <Header />
-          <main className="container py-6">
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/customer" element={<CustomerApp />} />
+    <div className="app-shell">
+      <Header />
+      <main className="container py-6">
+        <Routes>
+          <Route path="/" element={<Home />} />
 
-              {/* Đăng ký cửa hàng */}
-              <Route path="/merchant/register" element={<RegisterStore />} />
+          <Route path="/customer" element={<CustomerApp />} />
 
-              {/* Dashboard merchant (bảo vệ role) */}
-              <Route path="/merchant/dashboard" element={
-                <ProtectedRoute>
-                  <RoleGate allow={['merchant','admin']}>
-                    <MerchantDashboard />
-                  </RoleGate>
-                </ProtectedRoute>
-              } />
+          {/* đăng ký cửa hàng */}
+          <Route path="/merchant/register" element={<RegisterStore />} />
 
-              <Route path="/merchant/orders/:orderId/confirm" element={<MerchantConfirmOrder />} />
+          {/* trang merchant chính (nếu bạn vẫn muốn giữ /merchant riêng) */}
+          <Route path="/merchant" element={<Merchant />} />
 
-              <Route path="/shipper" element={<ShipperApp />} />
-              <Route path="/cart" element={<Cart />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/forgot" element={<ForgotPassword />} />
-              <Route path="/payment" element={<PaymentMethods />} />
-              <Route path="/payment/card" element={<PaymentCard />} />
-            </Routes>
-          </main>
-        </div>
-      </BrowserRouter>
-    </AuthProvider>
+          {/* dashboard merchant có bảo vệ */}
+          <Route
+            path="/merchant/dashboard"
+            element={
+              <ProtectedRoute>
+                <RoleGate allow={['merchant', 'admin']}>
+                  <MerchantDashboard />
+                </RoleGate>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* confirm order */}
+          <Route
+            path="/merchant/orders/:orderId/confirm"
+            element={<MerchantConfirmOrder />}
+          />
+
+          <Route path="/shipper" element={<ShipperApp />} />
+
+          <Route path="/cart" element={<Cart />} />
+
+          {/* auth */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot" element={<ForgotPassword />} />
+          <Route path="/verify-otp" element={<VerifyOTP />} />
+
+          {/* thanh toán */}
+          <Route path="/payment" element={<PaymentMethods />} />
+          <Route path="/payment/card" element={<PaymentCard />} />
+        </Routes>
+      </main>
+    </div>
   )
 }

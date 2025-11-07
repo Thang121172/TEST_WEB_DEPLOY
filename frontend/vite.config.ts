@@ -4,10 +4,11 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,                    // hoặc 5174 tùy bạn
+    host: true, // quan trọng để docker expose
+    port: 5173,
     proxy: {
       "/api": {
-        target: "http://localhost:8000",  // Django
+        target: "http://localhost:8000",
         changeOrigin: true,
         secure: false,
       },

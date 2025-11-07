@@ -1,12 +1,25 @@
+/*
+ * Tailwind CSS Directives
+ */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Leaflet map styles */
-@import url('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+/*
+ * Cấu hình Font Inter
+ * Áp dụng font Inter làm font chữ chính cho toàn bộ body.
+ * Fallback về font hệ thống nếu Inter không tải được.
+ */
+body {
+    font-family: 'Inter', sans-serif;
+    color: #1f2937; /* Default text color: gray-800 */
+    background-color: #f9fafb; /* Default background: gray-50 */
+}
 
-/* App-level helpers */
-.app-shell { min-height: 100vh; background-color: #f7faf7; }
-.container { max-width: 1100px; margin: 0 auto; padding: 1rem; }
-.menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
-.card { background: white; border-radius: 0.5rem; padding: 0.75rem; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+/* * Cấu hình cho container chung (giúp căn giữa nội dung)
+ */
+.container {
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+}

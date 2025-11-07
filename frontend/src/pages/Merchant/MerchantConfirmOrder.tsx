@@ -1,253 +1,438 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate, useParams, Link } from "react-router-dom";
+import { useAuthContext } from "../../context/AuthContext";
+import api from "../../services/http"; // chuẩn bị sẵn cho khi nối backend
 
-/**
- * Merchant – Xác nhận đơn
- * - Hiển thị mã đơn, khách, khoảng cách + tổng tiền
- * - Liệt kê món
- * - Chọn thời gian chuẩn bị (10–30 phút)
- * - Nút Xác nhận (POST /confirm/) & Từ chối (POST /reject/)
- * 
- * Đặt file tại: frontend/src/pages/Merchant/MerchantConfirmOrder.tsx
- * Yêu cầu route (App.tsx):
- *   <Route path="/merchant/orders/:orderId/confirm" element={<MerchantConfirmOrder />} />
- */
+// ===============================
+// ICON COMPONENTS (thay cho lucide-react)
+// ===============================
+const BagIcon = ({ className = "w-6 h-6 text-grabGreen-700 mr-2" }) => (
+  <span className={className} role="img" aria-label="bag">
+    🛍️
+  </span>
+);
 
-// ====== CONFIG – sửa lại nếu API base khác ======
-const API_BASE = "/api";
-const ENDPOINTS = {
-  orderDetail: (id: string) => `${API_BASE}/orders/${id}/`,            // GET
-  confirm:     (id: string) => `${API_BASE}/orders/${id}/confirm/`,     // POST { prep_time_minutes }
-  reject:      (id: string) => `${API_BASE}/orders/${id}/reject/`,      // POST { reason? }
+const XIcon = ({ className = "w-5 h-5 mr-2" }) => (
+  <span className={className} role="img" aria-label="x">
+    ✖
+  </span>
+);
+
+const CheckIcon = ({ className = "w-5 h-5 mr-2" }) => (
+  <span className={className} role="img" aria-label="check">
+    ✅
+  </span>
+);
+
+const ClockIcon = ({ className = "w-5 h-5 mr-2" }) => (
+  <span className={className} role="img" aria-label="clock">
+    ⏰
+  </span>
+);
+
+// ===============================
+// INTERFACES (Mock)
+// ===============================
+interface OrderItem {
+  id: number;
+  product_name: string;
+  quantity: number;
+  price: number;
+  notes?: string;
+}
+
+interface OrderDetails {
+  order_id: number;
+  customer_name: string;
+  customer_address: string;
+  customer_phone: string;
+  order_time: string;
+  delivery_time_estimate: string;
+  payment_method: string;
+  items: OrderItem[];
+  subtotal: number;
+  delivery_fee: number;
+  total: number;
+  status: "Pending" | "Confirmed" | "Ready" | "Cancelled";
+}
+
+// ===============================
+// MOCK DATA & UTILS
+// ===============================
+const mockOrderDetails: OrderDetails = {
+  order_id: 9001,
+  customer_name: "Trần Văn B",
+  customer_address:
+    "Tòa nhà A, 123 Đường Điện Biên Phủ, Phường Đa Kao, Quận 1, TP.HCM",
+  customer_phone: "090xxxx999",
+  order_time: "2025-10-25T13:55:00Z",
+  delivery_time_estimate: "40 phút",
+  payment_method: "VISA •••• 4242",
+  items: [
+    {
+      id: 1,
+      product_name: "Cơm Tấm Sườn Bì Chả Đặc Biệt",
+      quantity: 1,
+      price: 65000,
+    },
+    {
+      id: 2,
+      product_name: "Trà Sữa Khoai Môn",
+      quantity: 2,
+      price: 40000,
+      notes: "Ít đường, thêm trân châu trắng",
+    },
+    { id: 3, product_name: "Khăn lạnh", quantity: 1, price: 2000 },
+  ],
+  subtotal: 147000,
+  delivery_fee: 35000,
+  total: 182000,
+  status: "Pending",
 };
 
-// ====== Types (điều chỉnh nếu schema backend khác) ======
-interface OrderItem {
-  id: number | string;
-  name: string;
-  price: number;      // đơn giá
-  quantity: number;
-}
-interface OrderDetail {
-  id: number | string;
-  code: string;       // ví dụ: FF2025
-  customer_name: string;
-  distance_km?: number;
-  items: OrderItem[];
-}
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
+  }).format(amount);
+};
 
-function formatCurrency(v: number, suffix = "đ") {
-  try { return new Intl.NumberFormat("vi-VN").format(v) + (suffix ? ` ${suffix}` : ""); }
-  catch { return `${v.toLocaleString()} ${suffix}`; }
-}
+const timeSince = (dateString: string) => {
+  const seconds = Math.floor(
+    (new Date().getTime() - new Date(dateString).getTime()) / 1000
+  );
 
+  let interval = seconds / 31536000;
+  if (interval > 1) return Math.floor(interval) + " năm trước";
+
+  interval = seconds / 2592000;
+  if (interval > 1) return Math.floor(interval) + " tháng trước";
+
+  interval = seconds / 86400;
+  if (interval > 1) return Math.floor(interval) + " ngày trước";
+
+  interval = seconds / 3600;
+  if (interval > 1) return Math.floor(interval) + " giờ trước";
+
+  interval = seconds / 60;
+  if (interval > 1) return Math.floor(interval) + " phút trước";
+
+  return Math.floor(seconds) + " giây trước";
+};
+
+// ===============================
+// ORDER SUMMARY CARD
+// ===============================
+const OrderSummaryCard: React.FC<{ details: OrderDetails }> = ({ details }) => (
+  <div className="bg-white rounded-xl shadow-lg p-6 border-t-4 border-grabGreen-700 sticky top-4">
+    <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center">
+      <BagIcon />
+      <span>Chi tiết Đơn hàng #{details.order_id}</span>
+    </h2>
+
+    <div className="space-y-4">
+      {details.items.map((item) => (
+        <div key={item.id} className="border-b pb-3 pt-1">
+          <div className="flex justify-between items-center text-gray-800">
+            <span className="font-medium">
+              {item.quantity}x {item.product_name}
+            </span>
+            <span className="font-semibold">
+              {formatCurrency(item.quantity * item.price)}
+            </span>
+          </div>
+          {item.notes && (
+            <p className="text-sm text-red-500 italic mt-1 pl-2">
+              Lưu ý: {item.notes}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+
+    <div className="mt-4 space-y-2 text-gray-700">
+      <div className="flex justify-between text-sm">
+        <span>Tạm tính:</span>
+        <span>{formatCurrency(details.subtotal)}</span>
+      </div>
+      <div className="flex justify-between text-sm">
+        <span>Phí giao hàng:</span>
+        <span className="text-red-500">
+          {formatCurrency(details.delivery_fee)}
+        </span>
+      </div>
+    </div>
+
+    <div className="flex justify-between items-center mt-4 pt-3 border-t border-dashed">
+      <span className="text-xl font-bold text-gray-900">Tổng cộng:</span>
+      <span className="text-2xl font-extrabold text-red-600">
+        {formatCurrency(details.total)}
+      </span>
+    </div>
+  </div>
+);
+
+// ===============================
+// MAIN COMPONENT
+// ===============================
 export default function MerchantConfirmOrder() {
-  const { orderId } = useParams();
+  const { user, isAuthenticated, loading: authLoading } = useAuthContext();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [order, setOrder] = useState<OrderDetail | null>(null);
-  const [prepTime, setPrepTime] = useState<number | null>(15);
+  const { orderId } = useParams<{ orderId: string }>();
 
-  // Tải chi tiết đơn
+  const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // bảo vệ role merchant
   useEffect(() => {
-    if (!orderId) return;
-    let ignore = false;
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const res = await fetch(ENDPOINTS.orderDetail(orderId), { credentials: "include" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const raw = await res.json();
-        if (!ignore) setOrder(normalizeOrder(raw));
-      } catch (e: any) {
-        if (!ignore) setError(e?.message || "Không tải được đơn hàng.");
-      } finally {
-        if (!ignore) setLoading(false);
-      }
-    })();
-    return () => { ignore = true; };
-  }, [orderId]);
-
-  const total = useMemo(() => {
-    if (!order) return 0;
-    return order.items.reduce((s, it) => s + it.price * it.quantity, 0);
-  }, [order]);
-
-  async function onConfirm() {
-    if (!orderId || prepTime == null) return;
-    try {
-      setSubmitting(true);
-      const res = await fetch(ENDPOINTS.confirm(orderId), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ prep_time_minutes: prepTime }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      alert("✅ Xác nhận đơn thành công!");
-      navigate("/merchant/dashboard");
-    } catch (e: any) {
-      alert("❌ Xác nhận thất bại: " + (e?.message || "Lỗi không xác định"));
-    } finally {
-      setSubmitting(false);
+    if (!authLoading && !isAuthenticated) {
+      navigate("/login", { replace: true });
+    } else if (
+      !authLoading &&
+      isAuthenticated &&
+      user?.role !== "merchant" &&
+      user?.role !== "admin"
+    ) {
+      navigate("/merchant/dashboard", { replace: true });
     }
+  }, [authLoading, isAuthenticated, user, navigate]);
+
+  // fetch chi tiết đơn
+  const fetchOrderData = async () => {
+    setLoading(true);
+    try {
+      // TODO call API thật, ví dụ:
+      // const token = localStorage.getItem('authToken');
+      // const res = await api.get(`/orders/${orderId}/`, {
+      //   headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      // });
+      // setOrderDetails(res.data);
+
+      // Tạm mock:
+      setTimeout(() => {
+        setOrderDetails({
+          ...mockOrderDetails,
+          order_id: Number(orderId || mockOrderDetails.order_id),
+        });
+        setLoading(false);
+      }, 500);
+    } catch (e) {
+      console.error("Failed to fetch order details:", e);
+      setOrderDetails({
+        ...mockOrderDetails,
+        order_id: Number(orderId || mockOrderDetails.order_id),
+      });
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (
+      isAuthenticated &&
+      (user?.role === "merchant" || user?.role === "admin") &&
+      orderId
+    ) {
+      fetchOrderData();
+    }
+  }, [isAuthenticated, user, orderId]);
+
+  // action confirm / cancel
+  const handleAction = async (action: "confirm" | "cancel") => {
+    if (!orderDetails) return;
+    setIsProcessing(true);
+
+    try {
+      // TODO gọi API backend:
+      // - confirm: POST /api/orders/{id}/set_status/  body {status:"confirmed"}
+      // - cancel:  POST /api/orders/{id}/set_status/  body {status:"cancelled"}
+      //
+      // const token = localStorage.getItem("authToken");
+      // await api.post(
+      //   `/orders/${orderDetails.order_id}/set_status/`,
+      //   { status: action === "confirm" ? "confirmed" : "cancelled" },
+      //   { headers: token ? { Authorization: `Bearer ${token}` } : undefined }
+      // );
+
+      const newStatus = action === "confirm" ? "Confirmed" : "Cancelled";
+
+      // update UI mock
+      setOrderDetails((prev) =>
+        prev ? { ...prev, status: newStatus } : prev
+      );
+
+      alert(
+        `Đơn hàng #${orderDetails.order_id} đã được ${
+          action === "confirm" ? "XÁC NHẬN" : "HỦY"
+        } thành công!`
+      );
+
+      navigate("/merchant/dashboard");
+    } catch (err) {
+      console.error(`Failed to ${action} order:`, err);
+      alert(
+        `Lỗi: Không thể thực hiện hành động ${action.toUpperCase()}.`
+      );
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  if (authLoading || loading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen bg-gray-50">
+        <div className="text-xl text-gray-600">
+          Đang tải chi tiết đơn hàng #{orderId}...
+        </div>
+      </div>
+    );
   }
 
-  async function onReject() {
-    if (!orderId) return;
-    const reason = prompt("Lý do từ chối? (tuỳ chọn)") || undefined;
-    try {
-      setSubmitting(true);
-      const res = await fetch(ENDPOINTS.reject(orderId), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ reason }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      alert("⛔️ Đã từ chối đơn.");
-      navigate("/merchant/dashboard");
-    } catch (e: any) {
-      alert("❌ Từ chối thất bại: " + (e?.message || "Lỗi không xác định"));
-    } finally {
-      setSubmitting(false);
-    }
+  if (!orderDetails) {
+    return (
+      <div className="flex justify-center items-center min-h-screen bg-gray-50">
+        <div className="text-lg font-medium text-gray-700">
+          Không tìm thấy đơn hàng #{orderId}.
+        </div>
+      </div>
+    );
   }
+
+  const isPending = orderDetails.status === "Pending";
+  const timeSinceOrder = timeSince(orderDetails.order_time);
 
   return (
-    <div className="min-h-screen bg-[#f8faf9] text-slate-800">
-      <main className="mx-auto max-w-6xl p-4 md:p-6">
-        <h1 className="mb-4 text-xl font-semibold">Merchant – Xác nhận đơn</h1>
-
-        <section className="rounded-2xl border bg-white shadow-sm">
-          {/* Header/summary */}
-          <div className="rounded-t-2xl border-b bg-green-50 px-4 py-3 text-sm text-green-900">
-            {loading ? (
-              <span>Đang tải đơn...</span>
-            ) : error ? (
-              <span className="text-red-600">{error}</span>
-            ) : order ? (
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <span className="font-medium">Mã đơn:</span>{" "}
-                  <span className="font-semibold">#{order.code}</span>
-                  <span className="mx-2">•</span>
-                  <span className="font-medium">Khách:</span>{" "}
-                  <span>{order.customer_name}</span>
-                  {typeof order.distance_km === "number" && (
-                    <>
-                      <span className="mx-2">•</span>
-                      <span>{order.distance_km.toFixed(1)} km</span>
-                    </>
-                  )}
-                </div>
-                <div className="shrink-0 text-right">
-                  <div className="text-sm text-slate-500">Tổng:</div>
-                  <div className="text-base font-semibold text-slate-800">
-                    {formatCurrency(total)}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <span>Không có dữ liệu đơn hàng.</span>
-            )}
+    <div className="container mx-auto p-4 bg-gray-50 min-h-screen">
+      {/* Header + status badge */}
+      <div className="flex justify-between items-center mb-6 border-b pb-3 flex-col md:flex-row gap-4 md:gap-0">
+        <div>
+          <div className="text-sm text-gray-500 mb-1">
+            <Link
+              to="/merchant/dashboard"
+              className="hover:text-grabGreen-700 transition"
+            >
+              &larr; Quay lại Dashboard
+            </Link>
           </div>
 
-          {/* Body */}
-          <div className="p-4 md:p-6">
-            {/* Items */}
-            <div className="space-y-2">
-              {order?.items?.length ? (
-                order.items.map((it, idx) => (
-                  <div
-                    key={it.id}
-                    className="flex items-center justify-between gap-3 rounded-lg border bg-white px-3 py-2 shadow-sm"
-                  >
-                    <div className="flex-1 truncate text-sm text-slate-700">
-                      <span className="font-medium">Món {idx + 1}</span>{" "}
-                      <span>× {it.quantity}</span>{" "}
-                      <span className="text-slate-400">•</span>{" "}
-                      <span>{formatCurrency(it.price)}</span>
-                      <span className="text-slate-400"> — </span>
-                      <span className="truncate">{it.name}</span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                  Chưa có món trong đơn.
-                </div>
-              )}
-            </div>
+          <h1 className="text-3xl font-bold text-gray-800">
+            {isPending ? "Đơn hàng MỚI" : "Chi tiết Đơn hàng"}
+          </h1>
+        </div>
 
-            {/* Prep time */}
-            <div className="mt-5">
-              <div className="mb-2 text-sm font-medium text-slate-700">Thời gian chuẩn bị</div>
-              <div className="flex flex-wrap gap-2">
-                {[10, 15, 20, 25, 30].map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setPrepTime(m)}
-                    className={[
-                      "rounded-lg border px-3 py-1.5 text-sm transition",
-                      prepTime === m
-                        ? "border-green-600 bg-green-600 text-white"
-                        : "border-slate-300 bg-white hover:border-slate-400",
-                    ].join(" ")}
-                    disabled={submitting}
-                    type="button"
-                  >
-                    {m} phút
-                  </button>
-                ))}
-              </div>
-            </div>
+        <div
+          className={`text-lg font-bold px-4 py-2 rounded-full text-center min-w-[160px] ${
+            isPending
+              ? "bg-red-500 text-white animate-pulse"
+              : orderDetails.status === "Confirmed"
+              ? "bg-yellow-500 text-white"
+              : orderDetails.status === "Ready"
+              ? "bg-grabGreen-700 text-white"
+              : "bg-gray-400 text-white"
+          }`}
+        >
+          {isPending
+            ? "CHỜ XÁC NHẬN"
+            : orderDetails.status.toUpperCase()}
+        </div>
+      </div>
 
-            {/* Actions */}
-            <div className="mt-6 flex items-center gap-3">
-              <button
-                onClick={onConfirm}
-                disabled={submitting || loading || !order}
-                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {submitting ? "Đang xử lý..." : "Xác nhận"}
-              </button>
-              <button
-                onClick={onReject}
-                disabled={submitting || loading || !order}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Từ chối
-              </button>
+      {/* Layout 2 cột */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* LEFT: Thông tin KH + Hành động */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Cảnh báo thời gian */}
+          <div className="p-4 bg-yellow-100 text-yellow-800 rounded-xl shadow-md flex items-start font-medium border border-yellow-300 text-sm">
+            <ClockIcon />
+            <div>
+              Đơn hàng đặt {timeSinceOrder} trước. Vui lòng xác nhận sớm để
+              chuẩn bị món và phân công shipper.
             </div>
           </div>
-        </section>
 
-        <footer className="mt-8 text-center text-xs text-slate-500">
-          © 2025 FastFood · <a className="hover:underline" href="#">Liên hệ</a> ·{" "}
-          <a className="hover:underline" href="#">Chính sách</a>
-        </footer>
-      </main>
+          {/* Thông tin khách hàng */}
+          <div className="bg-white rounded-xl shadow-lg p-6 space-y-4 border border-gray-100">
+            <h2 className="text-xl font-bold text-gray-800 border-b pb-2">
+              Thông tin Khách hàng
+            </h2>
+
+            <div className="text-gray-700 space-y-2 text-sm">
+              <p>
+                <span className="font-semibold">Tên Khách hàng:</span>{" "}
+                {orderDetails.customer_name}
+              </p>
+              <p>
+                <span className="font-semibold">Địa chỉ Giao hàng:</span>{" "}
+                {orderDetails.customer_address}
+              </p>
+              <p>
+                <span className="font-semibold">SĐT:</span>{" "}
+                {orderDetails.customer_phone}
+              </p>
+              <p>
+                <span className="font-semibold">Thanh toán bằng:</span>{" "}
+                <span className="text-grabGreen-700">
+                  {orderDetails.payment_method}
+                </span>
+              </p>
+              <p>
+                <span className="font-semibold">
+                  Ước tính Giao hàng:
+                </span>{" "}
+                {orderDetails.delivery_time_estimate}
+              </p>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          {isPending ? (
+            <div className="flex flex-col md:flex-row gap-4 pt-4">
+              <button
+                onClick={() => handleAction("confirm")}
+                className={`flex-1 py-3 text-lg text-white rounded-xl font-bold transition duration-150 shadow-lg flex items-center justify-center ${
+                  isProcessing
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-grabGreen-700 hover:bg-grabGreen-800"
+                }`}
+                disabled={isProcessing}
+              >
+                <CheckIcon />
+                {isProcessing
+                  ? "Đang xác nhận..."
+                  : "Xác nhận Đơn hàng"}
+              </button>
+
+              <button
+                onClick={() => handleAction("cancel")}
+                className={`flex-1 py-3 text-lg rounded-xl font-bold transition duration-150 shadow-md flex items-center justify-center border ${
+                  isProcessing
+                    ? "bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed"
+                    : "bg-red-100 text-gray-700 border-red-300 hover:bg-red-200"
+                }`}
+                disabled={isProcessing}
+              >
+                <XIcon />
+                Từ chối Đơn hàng
+              </button>
+            </div>
+          ) : (
+            <div className="p-4 bg-grabGreen-50 text-grabGreen-800 rounded-xl font-medium border border-grabGreen-300 text-center text-sm">
+              Đơn hàng này đã được xử lý.{" "}
+              <Link
+                to="/merchant/dashboard"
+                className="font-bold hover:underline"
+              >
+                Quay lại Dashboard
+              </Link>
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT: Tóm tắt đơn */}
+        <div className="lg:col-span-1">
+          <OrderSummaryCard details={orderDetails} />
+        </div>
+      </div>
     </div>
   );
-}
-
-// -------- Helpers --------
-function normalizeOrder(raw: any): OrderDetail {
-  const id = raw?.id ?? raw?.order_id ?? "";
-  const code = raw?.code || raw?.order_code || String(id) || "";
-  const customer_name = raw?.customer_name || raw?.customer?.name || "Khách";
-  const distance_km = (raw?.distance_km ?? raw?.distance) as number | undefined;
-  const items: OrderItem[] = Array.isArray(raw?.items)
-    ? raw.items.map((r: any, idx: number) => ({
-        id: r?.id ?? idx,
-        name: r?.name || r?.menu_name || r?.title || `Món ${idx + 1}`,
-        price: Number(r?.price ?? r?.unit_price ?? 0),
-        quantity: Number(r?.quantity ?? r?.qty ?? 1),
-      }))
-    : [];
-  return { id, code, customer_name, distance_km, items };
 }

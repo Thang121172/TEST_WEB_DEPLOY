@@ -9,7 +9,6 @@ type RoleGateProps = {
   children: React.ReactNode;
   fallback?: React.ReactNode;    // tuỳ chọn: render thay thế nếu không đủ quyền
 };
-
 export default function RoleGate({ allow, children, fallback = null }: RoleGateProps) {
   const { user } = useAuthContext();
   const role: Role = (user?.role as Role) ?? "customer";

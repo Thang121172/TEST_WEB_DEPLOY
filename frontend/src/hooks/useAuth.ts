@@ -1,71 +1,64 @@
-import { useState, useEffect, useCallback } from "react";
-import api from "../services/http";
+import { useState, useEffect } from 'react';
 
-export type User = {
-  id?: number | string;
-  username: string;
-  name?: string;
-  role?: string;
+// Định nghĩa kiểu User
+export interface User {
+    id: string;
+    username: string;
+    role: 'customer' | 'merchant' | 'shipper';
+}
+
+// Giả lập logic của useAuth
+export const useAuth = () => {
+    const [user, setUser] = useState<User | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+    useEffect(() => {
+        // Giả lập một customer đang đăng nhập
+        const mockUser: User | null = {
+            id: 'mock-customer-123',
+            username: 'mock_user',
+            role: 'customer'
+        }; 
+
+        if (mockUser) {
+            setUser(mockUser);
+            setIsAuthenticated(true);
+        }
+        setLoading(false);
+    }, []);
+
+    // Các hàm mock
+    const fetchMe = async () => {
+        console.log('Mock fetchMe executed');
+        return;
+    };
+
+    const login = async (payload: any) => {
+        console.log('Mock login executed with payload:', payload);
+        const loggedInUser: User = { id: 'user-' + Math.random(), username: 'new_user', role: 'customer' };
+        setUser(loggedInUser);
+        setIsAuthenticated(true);
+        return { success: true };
+    };
+
+    const setToken = async (token: string) => {
+        console.log('Mock setToken executed:', token);
+    };
+
+    const logout = () => {
+        console.log('Mock logout executed');
+        setUser(null);
+        setIsAuthenticated(false);
+    };
+
+    return {
+        user,
+        loading,
+        isAuthenticated,
+        fetchMe,
+        login,
+        setToken,
+        logout,
+    };
 };
-
-function readUserCache(): User | null {
-  try {
-    const raw = localStorage.getItem("me");
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function useAuth() {
-  const [user, setUser] = useState<User | null>(readUserCache());
-  const [loading, setLoading] = useState<boolean>(true);
-
-  const fetchMe = useCallback(async () => {
-    try {
-      const r = await api.get("/accounts/me/");
-      setUser(r.data);
-      localStorage.setItem("me", JSON.stringify(r.data));
-    } catch {
-      setUser(null);
-      localStorage.removeItem("me");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchMe();
-  }, [fetchMe]);
-
-  const login = async (payload: any) => {
-    const res = await api.post("/accounts/login/", payload);
-    const data = res.data || {};
-    const token = data.access || data.token || data.jwt || null;
-    if (token) localStorage.setItem("token", token);
-    await fetchMe();
-    return data;
-  };
-
-  const setToken = async (token: string) => {
-    localStorage.setItem("token", token);
-    await fetchMe();
-  };
-
-  const logout = async () => {
-    try { await api.post("/accounts/logout/"); } catch {}
-    localStorage.removeItem("token");
-    localStorage.removeItem("me");
-    setUser(null);
-  };
-
-  return {
-    user,
-    loading,
-    fetchMe,
-    login,
-    logout,
-    setToken,
-    isAuthenticated: !!user,
-  };
-}

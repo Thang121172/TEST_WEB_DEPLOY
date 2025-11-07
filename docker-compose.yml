@@ -1,51 +1,96 @@
-version: '3.8'
 services:
   db:
     image: postgres:15
+    container_name: fastfood_db
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-fastfood}
-      POSTGRES_USER: ${POSTGRES_USER:-app}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-123456}
+      POSTGRES_DB: fastfood
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: 123456
     ports:
       - "5433:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: fastfood_redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379" 
+    command: ["redis-server", "--appendonly", "yes"]
+
   backend:
+    image: web-backend
+    container_name: fastfood_backend
     build:
-      context: ./backend
-    command: sh -c "python manage.py migrate --noinput && gunicorn core.wsgi:application --bind 0.0.0.0:8000"
-    env_file:
-      - ./backend/.env
-    environment:
-      - POSTGRES_HOST=db
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=${POSTGRES_DB:-fastfood}
-      - POSTGRES_USER=${POSTGRES_USER:-app}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-123456}
-      - EMAIL_HOST=mailhog
-      - EMAIL_PORT=1025
+      context: .
+      dockerfile: backend/Dockerfile
     depends_on:
       - db
-      - mailhog
+      - redis
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings.dev
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      # FIX 1: THÊM THÔNG TIN ĐĂNG NHẬP DB
+      POSTGRES_USER: app 
+      POSTGRES_PASSWORD: 123456
+    volumes:
+      - .:/app
+    working_dir: /app/backend
     ports:
       - "8000:8000"
+    command: >
+      sh -c "
+        python manage.py migrate &&
+        python manage.py runserver 0.0.0.0:8000
+      "
 
-  frontend:
-    build:
-      context: ./frontend
-    command: sh -c "npm run dev -- --host"
-    ports:
-      - "5173:5173"
-    environment:
-      - VITE_API_BASE=http://localhost:8000/api
+  celery_worker:
+    image: web-celery_worker
+    container_name: fastfood_celery_worker
     depends_on:
       - backend
+      - redis
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings.dev
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      # FIX 1: THÊM THÔNG TIN ĐĂNG NHẬP DB
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: 123456
+    volumes:
+      - .:/app
+    working_dir: /app/backend # Giữ nguyên nếu core nằm trong backend
+    command: >
+      sh -c "
+        # FIX 2: SỬA ĐƯỜNG DẪN MODULE CELERY (Giả định core nằm trong backend)
+        celery -A backend.core.celery_app worker --loglevel=INFO
+      "
 
-  mailhog:
-    image: mailhog/mailhog:latest
+  frontend:
+    image: web-frontend
+    container_name: fastfood_frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - backend
     ports:
-      - "8025:8025"
-      - "1025:1025"
+      - "5174:5173"
+    command: >
+      sh -c "
+        npm install &&
+        npm run dev -- --host 0.0.0.0 --port 5173
+      "
 
 volumes:
-  db_data:
+  postgres_data:
