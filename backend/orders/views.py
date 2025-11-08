@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
 from .models import Order, OrderItem
-from backend.menus.models import MenuItem, Merchant, MerchantMember # Corrected import
+from menus.models import MenuItem, Merchant, MerchantMember # Corrected import
 
 # =========================================================
 # Helpers
