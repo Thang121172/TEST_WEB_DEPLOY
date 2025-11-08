@@ -79,11 +79,11 @@ INSTALLED_APPS = [
     "django_celery_beat",
     "django_celery_results",
 
-    # Ứng dụng nội bộ
-    "accounts",
-    "menus",
-    "orders",
-    "payments",
+    # Ứng dụng nội bộ (ĐÃ SỬA: Sử dụng đường dẫn AppConfig đầy đủ)
+    "backend.accounts.app.AccountsConfig",
+    "backend.menus.apps.MenusConfig",
+    "backend.orders.apps.OrdersConfig",
+    "backend.payments.apps.PaymentsConfig",
 ]
 
 MIDDLEWARE = [
@@ -91,7 +91,8 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
 
     # optional middleware debug request body cho accounts/*
-    "core.middleware.request_logger.RequestLoggerMiddleware",
+    # Đã sửa lại đường dẫn middleware
+    "backend.core.middleware.request_logger.RequestLoggerMiddleware", 
 
     "django.middleware.security.SecurityMiddleware",
 
@@ -125,6 +126,7 @@ LOGGING = {
         }
     },
     "loggers": {
+        # Tên logger vẫn là tên app ngắn gọn
         "django": {"handlers": ["console"], "level": "INFO"},
         "accounts": {"handlers": ["console"], "level": "INFO"},
         "orders": {"handlers": ["console"], "level": "INFO"},
@@ -152,7 +154,8 @@ DATABASES = {
 # =========================================================
 # AUTH USER MODEL
 # =========================================================
-#AUTH_USER_MODEL = "accounts.User"
+# Nếu bạn định bật, hãy nhớ sử dụng đường dẫn đầy đủ:
+# AUTH_USER_MODEL = "backend.accounts.User"
 
 # =========================================================
 # MẬT KHẨU / BẢO MẬT TÀI KHOẢN
@@ -222,9 +225,9 @@ TEMPLATES = [
 # =========================================================
 # URL / GATEWAY
 # =========================================================
-ROOT_URLCONF = "core.urls"
-WSGI_APPLICATION = "core.wsgi.application"
-ASGI_APPLICATION = "core.asgi.application"  # chuẩn bị sẵn cho realtime sau này
+ROOT_URLCONF = "backend.core.urls"
+WSGI_APPLICATION = "backend.core.wsgi.application"
+ASGI_APPLICATION = "backend.core.asgi.application" # chuẩn bị sẵn cho realtime sau này
 
 # =========================================================
 # DRF + JWT

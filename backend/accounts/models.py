@@ -5,28 +5,8 @@ from django.db import models
 from django.utils import timezone
 from django.conf import settings
 
-# ============================
-# TẠM THỜI TẮT Custom User
-# ============================
-# from django.contrib.auth.models import AbstractUser
-#
-# class User(AbstractUser):
-#     email = models.EmailField(
-#         unique=True,
-#         blank=False,
-#         null=False,
-#         help_text="Email dùng để đăng ký / đăng nhập / nhận OTP",
-#     )
-#
-#     phone = models.CharField(
-#         max_length=20,
-#         blank=True,
-#         null=True,
-#         help_text="Số điện thoại (tùy chọn, có thể dùng OTP SMS sau này)",
-#     )
-#
-#     def __str__(self):
-#         return f"{self.username} <{self.email}>"
+# LƯU Ý: Đang sử dụng settings.AUTH_USER_MODEL mặc định của Django
+# Nếu bạn muốn dùng Custom User, hãy uncomment block User ở trên và cấu hình AUTH_USER_MODEL trong settings.
 
 class Profile(models.Model):
     ROLE_CHOICES = [
@@ -104,6 +84,15 @@ class Profile(models.Model):
 
 
 class OTPRequest(models.Model):
+    # Hằng số cho mục đích sử dụng OTP (QUAN TRỌNG: CẦN DÙNG TRONG VIEWS.PY)
+    PURPOSE_REGISTER = 'đăng ký tài khoản'
+    PURPOSE_RESET_PASSWORD = 'khôi phục mật khẩu'
+    
+    PURPOSE_CHOICES = [
+        (PURPOSE_REGISTER, 'Đăng ký'),
+        (PURPOSE_RESET_PASSWORD, 'Khôi phục mật khẩu'),
+    ]
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -120,6 +109,14 @@ class OTPRequest(models.Model):
         help_text="Mã OTP, ví dụ 6 chữ số",
     )
 
+    purpose = models.CharField(
+        max_length=50, 
+        choices=PURPOSE_CHOICES, 
+        default=PURPOSE_REGISTER,
+        verbose_name="Mục đích",
+        help_text="Mục đích sử dụng của mã OTP này",
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True,
     )
@@ -134,7 +131,7 @@ class OTPRequest(models.Model):
     )
 
     def __str__(self):
-        return f"OTP({self.identifier}, code={self.code}, used={self.used})"
+        return f"OTP({self.identifier}, code={self.code}, purpose={self.purpose}, used={self.used})"
 
     def is_valid(self):
         return (not self.used) and (timezone.now() < self.expires_at)

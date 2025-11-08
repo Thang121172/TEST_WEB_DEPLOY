@@ -5,15 +5,22 @@ from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import transaction
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status, permissions
-from rest_framework.permissions import IsAuthenticated
+from rest_framework import status, permissions, generics
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 
+# Cần import các Models liên quan
 from .models import OTPRequest, Profile
+from backend.menus.models import Merchant, MerchantMember
+# Cần import Celery Task (Phải có file accounts/tasks.py)
+from .tasks import send_otp_email
+
+# Cần import các Serializers
 from .serializers import (
     RegisterSerializer,
     RegisterMerchantSerializer,
@@ -21,68 +28,75 @@ from .serializers import (
     RegisterConfirmOTPSerializer,
     ResetPasswordConfirmSerializer,
     OTPRequestDebugSerializer,
+    MeSerializer,
 )
-from .tasks import send_otp_email  # Celery task gửi mail OTP
-from menus.models import Merchant
-
 
 User = get_user_model()
 
 
 # =========================================================
-# Helper tạo mã OTP
+# Helper tạo mã OTP và gửi email
 # =========================================================
+# Lấy TTL (Time-To-Live) từ settings hoặc mặc định 5 phút
+OTP_TTL_MINUTES = getattr(settings, 'OTP_TTL_MINUTES', 5)
+
 def generate_otp_code(length: int = 6) -> str:
     """Sinh mã OTP numeric, ví dụ '384129'."""
     return "".join(random.choice("0123456789") for _ in range(length))
 
 
-def _create_and_send_otp(email: str, purpose: str, ttl_minutes: int = 5):
+def _create_and_send_otp(email: str, purpose: str, ttl_minutes: int = OTP_TTL_MINUTES):
     """
     Tạo OTPRequest và cố gắng gửi email.
     Trả (otp_obj, sent_ok, debug_code)
-    - sent_ok: celery gửi được hay không
-    - debug_code: mã OTP để trả ra response trong DEBUG (cho dev test nhanh)
     """
     code = generate_otp_code(6)
 
+    identifier = email.strip().lower()
+
+    # Đánh dấu các OTPRequest cũ là used để dọn dẹp nhẹ
+    OTPRequest.objects.filter(
+        identifier=identifier,
+        used=False,
+        expires_at__lt=timezone.now()
+    ).update(used=True)
+
+
     otp_obj = OTPRequest.objects.create(
-        identifier=email,
+        identifier=identifier,
         code=code,
+        purpose=purpose,
         expires_at=timezone.now() + timedelta(minutes=ttl_minutes),
     )
 
     sent_ok = True
+    debug_code = None
+
     try:
-        # Gửi mail async
-        send_otp_email.delay(email, code)
+        # Gửi mail async (Celery task)
+        send_otp_email.delay(identifier, code, purpose) 
     except Exception:
-        # Celery chưa chạy hoặc lỗi SMTP
+        # Celery chưa chạy hoặc lỗi SMTP (chỉ báo lỗi)
         sent_ok = False
 
-    debug_code = code if (settings.DEBUG and not sent_ok) else None
+    # Nếu DEBUG=True VÀ email không gửi được, trả code ra cho dev
+    if settings.DEBUG and not sent_ok:
+        debug_code = code
 
     return otp_obj, sent_ok, debug_code
 
 
 # =========================================================
-# 1. Đăng ký thường (không OTP)
-#
-# POST /api/accounts/register/
-# body: { "username": "...", "password": "...", "email": "...?" }
-#
-# -> tạo user, profile(role=customer) và trả access/refresh (nếu SimpleJWT ok)
-# -> cái này chủ yếu để dev local tạo acc nhanh
+# 1. Non-OTP Auth Flow (Cơ bản/Dev Only)
 # =========================================================
 class RegisterView(APIView):
     """Đăng ký không OTP (dev/test)."""
-    authentication_classes = []
-    permission_classes = []
+    permission_classes = [AllowAny]
+    serializer_class = RegisterSerializer
 
     def post(self, request):
-        s = RegisterSerializer(data=request.data)
-        if not s.is_valid():
-            return Response(s.errors, status=status.HTTP_400_BAD_REQUEST)
+        s = self.serializer_class(data=request.data)
+        s.is_valid(raise_exception=True)
 
         user = s.create(s.validated_data)
         user.is_active = True
@@ -92,7 +106,6 @@ class RegisterView(APIView):
             'id': user.id,
             'username': user.username,
             'email': user.email,
-            'activated': True,
             'role': getattr(getattr(user, 'profile', None), 'role', 'customer'),
         }
 
@@ -103,46 +116,53 @@ class RegisterView(APIView):
                 'refresh': str(refresh),
             })
         except Exception:
-            # Nếu SimpleJWT chưa setup đúng thì vẫn trả user info
-            pass
+            pass 
 
         return Response(payload, status=status.HTTP_201_CREATED)
 
 
+class LoginView(TokenObtainPairView):
+    """
+    /api/accounts/login/ → access/refresh. 
+    Sử dụng SimpleJWT's TokenObtainPairView.
+    """
+    permission_classes = [AllowAny]
+
+
+class MeView(APIView):
+    """Thông tin user hiện tại + role từ Profile."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = MeSerializer
+
+    def get(self, request):
+        serializer = self.serializer_class(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 # =========================================================
-# 2. OTP đăng ký - bước 1:
-#
-# POST /api/accounts/register/request-otp/
-# body: { "email": "...", "password": "...", "role": "customer" }
-#
-# - validate email chưa dùng
-# - tạo OTPRequest, gửi email OTP
-# - trả { detail, debug_otp? }
-#
-# FE sau đó chuyển user sang màn hình nhập OTP.
-# FE nhớ giữ tạm password & role để gửi lại ở bước confirm.
+# 2. OTP Register Flow
 # =========================================================
 class RegisterRequestOTPView(APIView):
-    permission_classes = [permissions.AllowAny]
+    """
+    Bước 1: Xin OTP để đăng ký tài khoản mới.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = RegisterRequestOTPSerializer
 
     def post(self, request):
-        ser = RegisterRequestOTPSerializer(data=request.data)
-        if not ser.is_valid():
-            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
+        ser = self.serializer_class(data=request.data)
+        ser.is_valid(raise_exception=True)
 
         email = ser.validated_data["email"].strip().lower()
 
-        # tạo + gửi OTP
+        # Tạo + gửi OTP
         otp_obj, sent_ok, debug_code = _create_and_send_otp(
             email=email,
-            purpose="đăng ký tài khoản",
-            ttl_minutes=5,
+            purpose=OTPRequest.PURPOSE_REGISTER,
         )
 
-        # Nếu celery gửi thành công -> không trả OTP
-        # Nếu celery fail và DEBUG=True -> mình trả OTP để dev test
         resp = {
-            "detail": "OTP đã được gửi tới email (hoặc trả trực tiếp nếu đang ở chế độ DEBUG).",
+            "detail": f"OTP đăng ký đã được gửi tới {email}.",
             "expires_at": otp_obj.expires_at,
         }
         if debug_code:
@@ -151,166 +171,30 @@ class RegisterRequestOTPView(APIView):
         return Response(resp, status=status.HTTP_200_OK)
 
 
-# =========================================================
-# 3. OTP đăng ký - bước 2:
-#
-# POST /api/accounts/register/confirm/
-# body: { "email": "...", "otp": "123456", "password": "...", "role": "customer" }
-#
-# -> serializer sẽ:
-#    - kiểm tra OTP còn hạn, chưa dùng
-#    - tạo User (username = email), Profile(role)
-#    - đánh dấu OTP used
-#    - trả access/refresh
-# =========================================================
 class RegisterConfirmOTPView(APIView):
-    permission_classes = [permissions.AllowAny]
+    """
+    Bước 2: Xác nhận OTP và hoàn tất đăng ký user mới.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = RegisterConfirmOTPSerializer
 
     def post(self, request):
-        ser = RegisterConfirmOTPSerializer(data=request.data)
-        if not ser.is_valid():
-            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
-
+        ser = self.serializer_class(data=request.data)
+        ser.is_valid(raise_exception=True)
+        
+        # Logic tạo user, profile, đánh dấu OTP used, và tạo token nằm trong serializer.save()
         created_payload = ser.save()
         return Response(created_payload, status=status.HTTP_201_CREATED)
 
 
 # =========================================================
-# 4. Login
-#
-# Bạn đang dùng TokenObtainPairView mặc định của SimpleJWT.
-#
-# Mặc định view này yêu cầu:
-# {
-#   "username": "...",
-#   "password": "..."
-# }
-#
-# Lưu ý: với flow OTP register ở trên, ta tạo user như:
-#   username = email
-# => FE chỉ cần gửi username = email, password = password.
-#
-# Nếu bạn muốn login bằng field "email" thay vì "username",
-# bạn có 2 cách:
-#   (a) FE gửi {"username": email, "password": "..."}  -> đơn giản nhất
-#   (b) Tự viết serializer custom để map email -> username trước khi gọi authenticate
-#
-# Mình giữ cách (a) cho nhẹ.
-# =========================================================
-class LoginView(TokenObtainPairView):
-    """ /api/accounts/login/ → access/refresh """
-    permission_classes = [permissions.AllowAny]
-
-
-# =========================================================
-# 5. /api/accounts/me/
-#
-# GET kèm Authorization: Bearer <access_token>
-# trả thông tin user + role
-# =========================================================
-class MeView(APIView):
-    """Thông tin user hiện tại + role từ Profile."""
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        user = request.user
-        role = getattr(getattr(user, 'profile', None), 'role', 'customer')
-        return Response({
-            'id': user.id,
-            'username': user.username,
-            'email': user.email,
-            'role': role,
-        }, status=status.HTTP_200_OK)
-
-
-# =========================================================
-# 6. Đăng ký Merchant
-#
-# POST /api/accounts/register_merchant/
-# - Nếu CHƯA login:
-#   {username,password,email?,name,address?,phone?}
-#   -> tạo user + profile.role="merchant" + Merchant + MerchantMember
-#   -> trả token
-#
-# - Nếu ĐÃ login (Bearer token):
-#   {name,address?,phone?}
-#   -> dùng user hiện tại, nâng role=merchant, tạo Merchant
-#
-# Trả user info + merchant info + JWT
-# =========================================================
-class RegisterMerchantView(APIView):
-    permission_classes = [permissions.AllowAny]
-
-    def post(self, request):
-        ser = RegisterMerchantSerializer(
-            data=request.data,
-            context={"request": request},
-        )
-        if not ser.is_valid():
-            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        user, merchant = ser.save()
-
-        payload = {
-            "user": {
-                "id": user.id,
-                "username": user.username,
-                "email": user.email,
-                "role": getattr(getattr(user, "profile", None), "role", "customer"),
-            },
-            "merchant": {
-                "id": merchant.id,
-                "name": merchant.name,
-                "address": getattr(merchant, "address", ""),
-                "phone": getattr(merchant, "phone", ""),
-            },
-        }
-
-        # thêm JWT để FE merchant login ngay
-        try:
-            refresh = RefreshToken.for_user(user)
-            payload.update({
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
-            })
-        except Exception:
-            pass
-
-        return Response(payload, status=status.HTTP_201_CREATED)
-
-
-# =========================================================
-# 7. Danh sách merchant mà user hiện tại thuộc về
-#
-# GET /api/accounts/my_merchants/
-# -> [{"id": ..., "name": "..."}]
-# =========================================================
-class MyMerchantsView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        qs = Merchant.objects.filter(members__user=request.user).distinct()
-        data = [{"id": m.id, "name": m.name} for m in qs]
-        return Response(data, status=status.HTTP_200_OK)
-
-
-# =========================================================
-# 8A. Gửi OTP quên mật khẩu
-#
-# POST /api/accounts/forgot/request-otp/
-# body: { "email": "..." }
-#
-# Nếu email tồn tại:
-#   - tạo OTPRequest
-#   - gửi email OTP (hoặc trả debug_otp nếu Celery fail + DEBUG=True)
-#
-# Nếu email KHÔNG tồn tại:
-#   - vẫn trả 200 để tránh lộ thông tin user có tồn tại hay không
-#
-# FE sau đó sẽ điều hướng sang màn hình nhập OTP + mật khẩu mới.
+# 3. Forgot/Reset Password Flow
 # =========================================================
 class ForgotPasswordRequestOTPView(APIView):
-    permission_classes = [permissions.AllowAny]
+    """
+    Bước 1: Xin OTP để khôi phục mật khẩu (chỉ nếu email tồn tại).
+    """
+    permission_classes = [AllowAny]
 
     def post(self, request):
         email_raw = request.data.get("email", "")
@@ -319,15 +203,15 @@ class ForgotPasswordRequestOTPView(APIView):
         debug_code = None
         expires_at = None
 
+        # Chỉ tạo OTP nếu user tồn tại (tránh lộ thông tin user)
         if email and User.objects.filter(email__iexact=email).exists():
             otp_obj, sent_ok, debug_code = _create_and_send_otp(
                 email=email,
-                purpose="khôi phục mật khẩu",
-                ttl_minutes=5,
+                purpose=OTPRequest.PURPOSE_RESET_PASSWORD,
             )
             expires_at = otp_obj.expires_at
 
-        # Luôn trả 200
+        # Luôn trả 200 để tránh lộ thông tin user
         resp = {
             "detail": "Nếu email tồn tại, OTP khôi phục mật khẩu đã được gửi.",
             "expires_at": expires_at,
@@ -338,42 +222,86 @@ class ForgotPasswordRequestOTPView(APIView):
         return Response(resp, status=status.HTTP_200_OK)
 
 
-# =========================================================
-# 8B. Xác nhận OTP để đặt lại mật khẩu
-#
-# POST /api/accounts/reset-password/confirm/
-# body: { "email": "...", "otp": "123456", "new_password": "..." }
-#
-# ResetPasswordConfirmSerializer:
-#   - check OTP còn hạn
-#   - set password mới
-#   - mark OTP used
-# =========================================================
 class ResetPasswordConfirmView(APIView):
-    permission_classes = [permissions.AllowAny]
+    """
+    Bước 2: Xác nhận OTP và đặt lại mật khẩu cho user đã tồn tại.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = ResetPasswordConfirmSerializer
 
     def post(self, request):
-        ser = ResetPasswordConfirmSerializer(data=request.data)
-        if not ser.is_valid():
-            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
-
+        ser = self.serializer_class(data=request.data)
+        ser.is_valid(raise_exception=True)
+        
+        # Logic set password mới và đánh dấu OTP used nằm trong serializer.save()
         result = ser.save()
         return Response(result, status=status.HTTP_200_OK)
 
 
 # =========================================================
-# 9. DEV ONLY: xem OTP gần đây
-#
-# GET /api/accounts/otp/debug/
-# chỉ chạy khi DEBUG=True
+# 4. Merchant Flow
 # =========================================================
-class OTPDebugListView(APIView):
-    permission_classes = [permissions.AllowAny]
+class RegisterMerchantView(APIView):
+    """Đăng ký tài khoản merchant (tạo user/convert user)."""
+    permission_classes = [AllowAny]
+    serializer_class = RegisterMerchantSerializer
+
+    def post(self, request):
+        # Truyền request vào context để xử lý logic user đã đăng nhập/chưa đăng nhập
+        serializer = self.serializer_class(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        
+        # Serializer trả về user object (đã được nâng role)
+        user, merchant = serializer.save() 
+        
+        # Lấy tokens và thông tin merchant
+        tokens = RefreshToken.for_user(user)
+        
+        response_data = {
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "role": user.profile.role,
+                "tokens": {
+                    "access": str(tokens.access_token),
+                    "refresh": str(tokens),
+                }
+            },
+            "merchant": {
+                "id": merchant.id,
+                "name": merchant.name,
+                "phone": getattr(merchant, "phone", ""),
+            }
+        }
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+
+class MyMerchantsView(APIView):
+    """Danh sách merchant mà user hiện tại thuộc về (merchant/admin)."""
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        # Lấy danh sách Merchant mà user là thành viên thông qua MerchantMember
+        qs = Merchant.objects.filter(members__user=request.user).distinct()
+        data = [{"id": m.id, "name": m.name} for m in qs]
+        return Response(data, status=status.HTTP_200_OK)
+
+
+# =========================================================
+# 5. Debug Endpoints (Chỉ dành cho môi trường Dev)
+# =========================================================
+class OTPDebugListView(generics.ListAPIView):
+    """
+    [DEBUG ONLY] Xem danh sách các yêu cầu OTP gần đây. 
+    Chỉ chạy khi settings.DEBUG = True.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = OTPRequestDebugSerializer
+
+    def get(self, request, *args, **kwargs):
         if not settings.DEBUG:
             return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
-
-        qs = OTPRequest.objects.order_by("-created_at")[:20]
-        data = OTPRequestDebugSerializer(qs, many=True).data
-        return Response(data, status=status.HTTP_200_OK)
+        
+        self.queryset = OTPRequest.objects.all().order_by('-created_at')[:20]
+        
+        return super().get(request, *args, **kwargs)

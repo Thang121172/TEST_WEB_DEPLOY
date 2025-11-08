@@ -7,11 +7,31 @@ Celery app dùng cho FastFood.
 """
 
 import os
+import sys
 from celery import Celery
-from django.conf import settings
+# Thêm import setup từ django
+import django 
+from django.conf import settings 
 
-# Đảm bảo Celery biết dùng settings dev của Django khi khởi động
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings.dev")
+# ==============================================================
+# QUAN TRỌNG: THÊM THƯ MỤC BACKEND VÀO PYTHON PATH
+# ==============================================================
+# Lấy đường dẫn tới thư mục backend/ (level 2)
+# File này đang ở backend/core/celery_app.py
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BACKEND_DIR not in sys.path:
+    sys.path.insert(0, BACKEND_DIR)
+    # Thêm thư mục cha của 'backend' vào path (tức là thư mục WEB)
+    sys.path.insert(0, os.path.dirname(BACKEND_DIR))
+
+
+# 1. Đảm bảo Celery biết dùng settings của Django khi khởi động.
+# Trỏ đến file settings.py của bạn
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.core.settings")
+
+# 2. BẮT BUỘC khởi tạo Django ngay lập tức để Celery đọc được settings.
+# Đây là bước cần thiết để Celery không dùng cấu hình mặc định (AMQP)
+django.setup() 
 
 # Tạo Celery instance (tên "fastfood" để dễ nhận log)
 app = Celery("fastfood")
@@ -28,11 +48,5 @@ app.autodiscover_tasks()
 def debug_task(self):
     """
     Task test nhanh để kiểm tra celery_worker có chạy không.
-    Bạn có thể mở shell Django trong container backend:
-        python manage.py shell
-    rồi:
-        from core.celery_app import debug_task
-        debug_task.delay()
-    Sau đó xem docker compose logs celery_worker.
     """
     print(f"[CELERY DEBUG] Task running. Request={self.request!r}")

@@ -1,57 +1,88 @@
+version: '3.8'
+
 services:
+  # ----------------------------------------------------
+  # POSTGRESQL DATABASE SERVICE
+  # ----------------------------------------------------
   db:
     image: postgres:15
     container_name: fastfood_db
+    # Khởi động lại trừ khi bị dừng thủ công
     restart: unless-stopped
     environment:
       POSTGRES_DB: fastfood
       POSTGRES_USER: app
       POSTGRES_PASSWORD: 123456
+    # Map port 5433 trên host tới 5432 trong container
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d fastfood"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
+  # ----------------------------------------------------
+  # REDIS CACHE/BROKER SERVICE
+  # ----------------------------------------------------
   redis:
     image: redis:7
     container_name: fastfood_redis
     restart: unless-stopped
     ports:
-      - "6380:6379" 
+      - "6380:6379"
+    # Kích hoạt tính năng ghi log (persistence)
     command: ["redis-server", "--appendonly", "yes"]
 
+  # ----------------------------------------------------
+  # DJANGO BACKEND SERVICE
+  # ----------------------------------------------------
   backend:
-    image: web-backend
     container_name: fastfood_backend
     build:
       context: .
       dockerfile: backend/Dockerfile
+    # Đảm bảo DB và Redis khởi động trước
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy # Đợi DB báo healthy
+      redis:
+        condition: service_started
     env_file:
       - .env
     environment:
       DJANGO_SETTINGS_MODULE: core.settings.dev
+      # Kết nối DB
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
-      # FIX 1: THÊM THÔNG TIN ĐĂNG NHẬP DB
-      POSTGRES_USER: app 
+      POSTGRES_USER: app
       POSTGRES_PASSWORD: 123456
     volumes:
+      # Mount thư mục hiện tại vào /app để phát triển
       - .:/app
     working_dir: /app/backend
     ports:
       - "8000:8000"
+    # Chờ DB sẵn sàng trước khi migrate và chạy server
     command: >
       sh -c "
+        /usr/bin/wait-for-it db:5432 --timeout=30 --strict -- echo 'PostgreSQL is up and running.' &&
         python manage.py migrate &&
         python manage.py runserver 0.0.0.0:8000
       "
 
+  # ----------------------------------------------------
+  # CELERY WORKER SERVICE
+  # ----------------------------------------------------
   celery_worker:
-    image: web-celery_worker
     container_name: fastfood_celery_worker
+    # Dùng chung build context và Dockerfile với backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    # Phụ thuộc vào backend và redis
     depends_on:
       - backend
       - redis
@@ -59,22 +90,24 @@ services:
       - .env
     environment:
       DJANGO_SETTINGS_MODULE: core.settings.dev
+      # Kết nối DB (Dù worker không trực tiếp migrate, vẫn cần cho một số task)
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
-      # FIX 1: THÊM THÔNG TIN ĐĂNG NHẬP DB
       POSTGRES_USER: app
       POSTGRES_PASSWORD: 123456
     volumes:
       - .:/app
-    working_dir: /app/backend # Giữ nguyên nếu core nằm trong backend
+    working_dir: /app/backend
     command: >
       sh -c "
-        # FIX 2: SỬA ĐƯỜNG DẪN MODULE CELERY (Giả định core nằm trong backend)
-        celery -A backend.core.celery_app worker --loglevel=INFO
+        /usr/bin/wait-for-it db:5432 --timeout=30 --strict -- echo 'PostgreSQL is up and running for worker.' &&
+        celery -A core.celery_app worker --loglevel=INFO
       "
 
+  # ----------------------------------------------------
+  # FRONTEND SERVICE
+  # ----------------------------------------------------
   frontend:
-    image: web-frontend
     container_name: fastfood_frontend
     build:
       context: ./frontend
@@ -82,6 +115,7 @@ services:
     working_dir: /app
     volumes:
       - ./frontend:/app
+      - /app/node_modules # Giúp tránh xung đột với node_modules trên host
     depends_on:
       - backend
     ports:
@@ -92,5 +126,8 @@ services:
         npm run dev -- --host 0.0.0.0 --port 5173
       "
 
+# ----------------------------------------------------
+# VOLUMES
+# ----------------------------------------------------
 volumes:
   postgres_data:

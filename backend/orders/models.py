@@ -2,7 +2,8 @@
 
 from django.db import models
 from django.conf import settings
-from menus.models import Merchant, MenuItem
+# ĐÃ SỬA: Dùng đường dẫn tuyệt đối (backend.menus.models)
+from backend.menus.models import Merchant, MenuItem
 
 User = settings.AUTH_USER_MODEL
 
@@ -14,13 +15,13 @@ class Order(models.Model):
     """
 
     class Status(models.TextChoices):
-        PENDING = "PENDING", "Pending"                  # khách đặt, chờ merchant duyệt
-        CONFIRMED = "CONFIRMED", "Confirmed"            # merchant chấp nhận làm
+        PENDING = "PENDING", "Pending"              # khách đặt, chờ merchant duyệt
+        CONFIRMED = "CONFIRMED", "Confirmed"        # merchant chấp nhận làm
         READY = "READY_FOR_PICKUP", "Ready for pickup"  # món đã sẵn sàng để shipper lấy
-        PICKED_UP = "PICKED_UP", "Picked up"            # shipper đã nhận hàng
-        DELIVERING = "DELIVERING", "Delivering"         # đang giao
-        DELIVERED = "DELIVERED", "Delivered"            # đã giao xong
-        CANCELED = "CANCELED", "Canceled"               # hủy
+        PICKED_UP = "PICKED_UP", "Picked up"        # shipper đã nhận hàng
+        DELIVERING = "DELIVERING", "Delivering"     # đang giao
+        DELIVERED = "DELIVERED", "Delivered"        # đã giao xong
+        CANCELED = "CANCELED", "Canceled"           # hủy
 
     class PaymentStatus(models.TextChoices):
         UNPAID = "UNPAID", "Unpaid"

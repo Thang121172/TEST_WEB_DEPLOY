@@ -30,11 +30,11 @@ INSTALLED_APPS = [
     "django_celery_beat",
     "django_celery_results",
 
-    # local apps
-    "accounts",
-    "menus",
-    "orders",
-    "payments",
+    # local apps - Đã sửa để sử dụng đường dẫn đầy đủ 'backend.<tên_app>'
+    "backend.accounts",
+    "backend.menus",
+    "backend.orders",
+    "backend.payments",
 ]
 
 MIDDLEWARE = [
@@ -95,7 +95,7 @@ TEMPLATES = [
 ]
 
 # === Auth ===
-AUTH_PASSWORD_VALIDATORS = []  # dev cho nhanh
+AUTH_PASSWORD_VALIDATORS = []   # dev cho nhanh
 
 # === i18n / tz ===
 LANGUAGE_CODE = "vi"
@@ -127,6 +127,19 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+# ➡️ BỔ SUNG CẤU HÌNH CELERY/REDIS TẠI ĐÂY ⬅️
+# === CELERY/REDIS CONFIGURATION ===
+# Dùng tên 'redis' cho Docker, nhưng mặc định là '127.0.0.1' cho môi trường cục bộ (Windows)
+REDIS_HOST = os.environ.get("REDIS_HOST", "127.0.0.1")
+CELERY_BROKER_URL = f'redis://{REDIS_HOST}:6379/1'
+CELERY_RESULT_BACKEND = f'redis://{REDIS_HOST}:6379/2'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
 
 # === CORS (DEV) ===
 # mở toang cho dev để khỏi dính preflight lỗi

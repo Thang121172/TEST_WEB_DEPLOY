@@ -2,71 +2,25 @@
 
 from django.db import models
 from django.conf import settings
-from orders.models import Order
+from django.contrib.auth import get_user_model 
 
+# QUAN TRỌNG: Sử dụng get_user_model()
+User = get_user_model() 
 
-class PaymentTransaction(models.Model):
-    """
-    Giao dịch thanh toán gắn với 1 Order.
-    Ví dụ:
-    - COD
-    - Chuyển khoản
-    - Ví điện tử (Momo/VNPay) trong tương lai
-    """
+class Payment(models.Model):
+    # Sử dụng User model đã được lấy thông qua get_user_model()
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='payments') 
+    
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    payment_method = models.CharField(max_length=50, default='Cash') # Ví dụ: 'VNPAY', 'MOMO', 'Cash'
+    transaction_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
+    status = models.CharField(max_length=20, default='Pending') # Ví dụ: 'Completed', 'Failed', 'Pending'
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
-    class Method(models.TextChoices):
-        COD = "COD", "Cash on Delivery"
-        CASH = "CASH", "Tiền mặt trực tiếp"
-        TRANSFER = "TRANSFER", "Chuyển khoản"
-        GATEWAY = "GATEWAY", "Cổng thanh toán"
-
-    class Status(models.TextChoices):
-        PENDING = "PENDING", "Pending"
-        SUCCESS = "SUCCESS", "Success"
-        FAILED = "FAILED", "Failed"
-        REFUNDED = "REFUNDED", "Refunded"
-
-    order = models.ForeignKey(
-        Order,
-        on_delete=models.CASCADE,
-        related_name="payments",
-        help_text="Đơn hàng liên quan đến giao dịch này",
-    )
-
-    method = models.CharField(
-        max_length=20,
-        choices=Method.choices,
-        default=Method.COD,
-        help_text="Phương thức thanh toán",
-    )
-
-    status = models.CharField(
-        max_length=20,
-        choices=Status.choices,
-        default=Status.PENDING,
-        help_text="Trạng thái thanh toán",
-    )
-
-    amount = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        help_text="Số tiền thanh toán",
-    )
-
-    external_ref = models.CharField(
-        max_length=255,
-        blank=True,
-        default="",
-        help_text="Mã giao dịch từ cổng thanh toán ngoài (nếu có)",
-    )
-
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-    )
-
-    updated_at = models.DateTimeField(
-        auto_now=True,
-    )
+    class Meta:
+        verbose_name = "Payment"
+        verbose_name_plural = "Payments"
 
     def __str__(self):
-        return f"Payment(order={self.order_id}, status={self.status}, amount={self.amount})"
+        return f"Payment {self.id} - {self.user.email} - {self.amount}"

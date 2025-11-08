@@ -1,5 +1,3 @@
-# backend/orders/views.py
-
 from decimal import Decimal
 from django.db import transaction
 from django.db.models import Q, Sum
@@ -11,8 +9,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
 from .models import Order, OrderItem
-from menus.models import MenuItem, Merchant, MerchantMember
-
+from backend.menus.models import MenuItem, Merchant, MerchantMember # Corrected import
 
 # =========================================================
 # Helpers
@@ -227,7 +224,7 @@ class MerchantViewSet(viewsets.ViewSet):
         """
         GET /api/merchant/
         -> trả danh sách món (MenuItem). Hiện đang chưa filter theo merchant cụ thể,
-           vì MenuItem hiện chỉ có merchant_id dạng số (chưa FK chặt).
+          vì MenuItem hiện chỉ có merchant_id dạng số (chưa FK chặt).
         Bạn có thể filter theo merchant_id của user sau.
         """
         items = MenuItem.objects.all().order_by("id")
@@ -271,7 +268,7 @@ class MerchantViewSet(viewsets.ViewSet):
 #
 # - list(): đơn chưa giao xong (khác DELIVERED)
 # - pickup(): POST /api/shipper/{order_id}/pickup/
-#             -> shipper nhận đơn, chuyển trạng thái sang đang giao
+#              -> shipper nhận đơn, chuyển trạng thái sang đang giao
 #
 # Gợi ý: bạn có thể mở rộng:
 #   - available(): liệt kê đơn READY_FOR_PICKUP chưa ai nhận

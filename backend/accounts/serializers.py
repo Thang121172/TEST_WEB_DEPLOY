@@ -6,7 +6,8 @@ from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import Profile, OTPRequest
-from menus.models import Merchant, MerchantMember 
+# ĐÃ SỬA: Dùng đường dẫn tuyệt đối (backend.menus.models)
+from backend.menus.models import Merchant, MerchantMember 
 
 User = get_user_model()
 
