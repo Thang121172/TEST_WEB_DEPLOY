@@ -22,17 +22,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && chmod +x /usr/bin/wait-for-it \
     && rm -rf /var/lib/apt/lists/*
 
-# SỬA LỖI: Copy requirements từ cấp độ hiện tại của Dockerfile (backend/)
+# Copy requirements và cài đặt
 COPY requirements.txt /app/requirements.txt
 RUN python -m pip install --upgrade pip && \
     pip install -r requirements.txt
 
-# Copy toàn bộ source code (các module core, orders, v.v.) vào container
+# Copy toàn bộ source code
 COPY . /app/
 
-# Expose port
+# Expose port (Dùng cho môi trường local)
 EXPOSE 8000
 
-# Lệnh Production mặc định (SỬA LỖI ĐƯỜNG DẪN GUNICORN)
-# Sau khi COPY, folder backend/ trở thành /app/, nên đường dẫn là core.wsgi
-CMD ["gunicorn", "core.wsgi:application", "--bind", "0.0.0.0:8000"]
+# Lệnh Production cuối cùng:
+# 1. Chờ DB sẵn sàng (WAIT_HOSTS được cấu hình trong Render Environment Variables)
+# 2. Chạy migrate
+# 3. Chạy Gunicorn, lắng nghe trên 0.0.0.0:$PORT
+CMD ["/usr/bin/wait-for-it", "${WAIT_HOSTS}:5432", "--timeout=60", "--", "sh", "-c", \
+     "python manage.py migrate --noinput && \
+      gunicorn core.wsgi:application --bind 0.0.0.0:$PORT"]
