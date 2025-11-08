@@ -8,7 +8,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
-    # FIX QUAN TRỌNG: Thiết lập PYTHONPATH để Python có thể tìm thấy module 'backend'
     PYTHONPATH=/app
 
 # Cài đặt các gói hệ thống cần thiết và công cụ wait-for-it
@@ -19,23 +18,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     curl \
     # === THÊM CÔNG CỤ WAIT-FOR-IT ===
-    # Tải và cài đặt wait-for-it.sh vào /usr/bin
     && curl -L https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh -o /usr/bin/wait-for-it \
     && chmod +x /usr/bin/wait-for-it \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements và cài đặt Python dependencies
-# Giả định requirements.txt nằm trong thư mục backend/
-COPY backend/requirements.txt /app/requirements.txt
+# SỬA LỖI: Copy requirements từ cấp độ hiện tại của Dockerfile (backend/)
+COPY requirements.txt /app/requirements.txt
 RUN python -m pip install --upgrade pip && \
     pip install -r requirements.txt
 
-# Copy toàn bộ source code backend vào container (Từ root context)
+# Copy toàn bộ source code (các module core, orders, v.v.) vào container
 COPY . /app/
 
 # Expose port
 EXPOSE 8000
 
-# Lệnh Production mặc định (Sử dụng Gunicorn)
-# Lệnh này sẽ được ghi đè bởi docker-compose cho môi trường dev/worker
+# Lệnh Production mặc định (SỬA LỖI ĐƯỜNG DẪN GUNICORN)
+# Sau khi COPY, folder backend/ trở thành /app/, nên đường dẫn là core.wsgi
 CMD ["gunicorn", "core.wsgi:application", "--bind", "0.0.0.0:8000"]
