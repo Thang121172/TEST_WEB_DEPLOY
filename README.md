@@ -43,7 +43,7 @@ backend/signals.py
 
 backend/core/__init__.py
 backend/core/asgi.py
-backend/core/celery_app.py
+backend/core/app.py
 backend/core/health.py
 backend/core/logging.py
 backend/core/routing.py

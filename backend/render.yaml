@@ -35,7 +35,7 @@ services:
       - key: ENVIRONMENT
         value: Production
       - key: DJANGO_SETTINGS_MODULE
-        value: fastfood.settings
+        value: core.settings.prod
       # URL của Render Service
       - key: RENDER_EXTERNAL_HOSTNAME
         fromService:
