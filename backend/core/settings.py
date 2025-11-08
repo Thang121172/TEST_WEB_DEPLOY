@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.sites", # Thêm sites cho các thư viện bên thứ 3 (như Celery)
 
     # third-party
     "rest_framework",
@@ -30,12 +31,16 @@ INSTALLED_APPS = [
     "django_celery_beat",
     "django_celery_results",
 
-    # local apps - Đã sửa để sử dụng đường dẫn đầy đủ 'backend.<tên_app>'
-    "backend.accounts",
-    "backend.menus",
-    "backend.orders",
-    "backend.payments",
+    # local apps - ĐÃ SỬA: Loại bỏ tiền tố 'backend.'
+    "core", 
+    "accounts",
+    "menus",
+    "orders",
+    "payments",
 ]
+
+# Thêm SITE_ID khi sử dụng django.contrib.sites
+SITE_ID = 1
 
 MIDDLEWARE = [
     # CORS phải đứng rất cao, trước CommonMiddleware
@@ -59,6 +64,7 @@ ASGI_APPLICATION = "core.asgi.application"
 # container docker-compose của bạn đang dùng Postgres
 # nên để Postgres làm default
 if os.environ.get("USE_POSTGRES", "1") == "1":
+    # Cấu hình cho local/docker-compose
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
@@ -69,6 +75,9 @@ if os.environ.get("USE_POSTGRES", "1") == "1":
             "PORT": os.environ.get("POSTGRES_PORT", "5432"),
         }
     }
+    # Thêm cấu hình cho Render bằng dj-database-url (nếu có, nhưng hiện tại bạn dùng biến môi trường)
+    # Tạm thời giữ nguyên logic của bạn để sử dụng biến ENV
+    
 else:
     DATABASES = {
         "default": {
