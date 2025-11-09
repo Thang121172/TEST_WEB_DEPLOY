@@ -33,12 +33,14 @@ INSTALLED_APPS = [
     'corsheaders',
     'celery', 
 
-    # Your Apps: ĐÃ KHẮC PHỤC LỖI TỪ LOG TRƯỚC (BỎ TIỀN TỐ 'backend.')
-    'core',     # <-- Đã thêm (vì bạn dùng Celery -A core.celery_app)
-    'accounts', # <-- Đã thêm (vì lỗi Cannot import 'backend.accounts')
+    # Your Apps: ĐÃ CẬP NHẬT VÀ SỬA LỖI
+    'core', 
+    # **ĐÃ SỬA:** Trỏ thẳng đến AppConfig trong accounts/app.py
+    'accounts.app.AccountsConfig', 
     'menus',  
     'orders', 
-    # Vui lòng thêm các ứng dụng tùy chỉnh khác của bạn ở đây nếu có.
+    'payments', 
+    # Thêm các ứng dụng custom khác nếu có
 ]
 
 MIDDLEWARE = [
@@ -53,7 +55,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# ĐÃ KHẮC PHỤC LỖI - BỎ TIỀN TỐ 'backend.'
+# ĐÃ SỬA LỖI - BỎ TIỀN TỐ 'backend.'
 ROOT_URLCONF = 'urls' 
 WSGI_APPLICATION = 'wsgi.application'
 
