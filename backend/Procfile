@@ -1,12 +1,10 @@
-# backend/Procfile
+# CẢNH BÁO: Đã thêm DJANGO_SETTINGS_MODULE và sửa đường dẫn Gunicorn
 
-# Tiến trình Web chính (Gunicorn) - GIỮ NGUYÊN (Đúng)
-web: gunicorn core.wsgi:application --bind 0.0.0.0:$PORT
+# Tiến trình Web chính (Gunicorn)
+web: DJANGO_SETTINGS_MODULE=settings gunicorn wsgi:application --bind 0.0.0.0:$PORT
 
 # Tiến trình Celery Worker (Task bất đồng bộ)
-# SỬA: Trỏ thẳng đến module `core.celery_app`
-worker: celery -A core.celery_app worker -l info
+worker: DJANGO_SETTINGS_MODULE=settings celery -A core.celery_app worker -l info
 
 # Tiến trình Celery Beat (Lập lịch tác vụ)
-# SỬA: Trỏ thẳng đến module `core.celery_app`
-beat: celery -A core.celery_app beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+beat: DJANGO_SETTINGS_MODULE=settings celery -A core.celery_app beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
