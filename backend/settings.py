@@ -7,7 +7,6 @@ import dj_database_url
 load_dotenv() 
 
 # Thiết lập đường dẫn cơ sở của dự án
-# BASE_DIR sẽ là thư mục cha của thư mục 'backend' (tức là thư mục gốc của repo)
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # --------------------------
@@ -34,10 +33,12 @@ INSTALLED_APPS = [
     'corsheaders',
     'celery', 
 
-    # Your Apps: ĐÃ SỬA LỖI - BỎ TIỀN TỐ 'backend.'
-    'menus',  # <-- Đã sửa từ 'backend.menus'
-    'orders', # <-- Đã sửa từ 'backend.orders'
-    # Thêm các ứng dụng custom khác nếu có (ví dụ: 'accounts', 'core',...)
+    # Your Apps: ĐÃ KHẮC PHỤC LỖI TỪ LOG TRƯỚC (BỎ TIỀN TỐ 'backend.')
+    'core',     # <-- Đã thêm (vì bạn dùng Celery -A core.celery_app)
+    'accounts', # <-- Đã thêm (vì lỗi Cannot import 'backend.accounts')
+    'menus',  
+    'orders', 
+    # Vui lòng thêm các ứng dụng tùy chỉnh khác của bạn ở đây nếu có.
 ]
 
 MIDDLEWARE = [
@@ -52,7 +53,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# ĐÃ SỬA LỖI - BỎ TIỀN TỐ 'backend.'
+# ĐÃ KHẮC PHỤC LỖI - BỎ TIỀN TỐ 'backend.'
 ROOT_URLCONF = 'urls' 
 WSGI_APPLICATION = 'wsgi.application'
 
