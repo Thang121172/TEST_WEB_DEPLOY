@@ -160,3 +160,196 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"{self.quantity} x {self.name_snapshot} (Order {self.order_id})"
+
+
+# =========================================================
+# UC-11: Review & Rating Models
+# =========================================================
+
+class Review(models.Model):
+    """
+    UC-11: Đánh giá đơn/món/shipper
+    Customer có thể đánh giá:
+    - Đơn hàng (order)
+    - Món ăn (menu_item) 
+    - Shipper
+    """
+    
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="reviews",
+        help_text="Đơn hàng được đánh giá"
+    )
+    
+    customer = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="reviews_given",
+        help_text="Khách hàng đánh giá"
+    )
+    
+    # Đánh giá tổng thể đơn hàng (1-5 sao)
+    order_rating = models.PositiveIntegerField(
+        default=5,
+        help_text="Đánh giá đơn hàng (1-5 sao)"
+    )
+    
+    # Đánh giá merchant/cửa hàng
+    merchant_rating = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Đánh giá cửa hàng (1-5 sao)"
+    )
+    
+    # Đánh giá shipper (nếu có)
+    shipper_rating = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Đánh giá shipper (1-5 sao)"
+    )
+    
+    comment = models.TextField(
+        blank=True,
+        default="",
+        help_text="Nhận xét của khách hàng"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = [['order', 'customer']]  # Mỗi customer chỉ đánh giá 1 lần cho 1 đơn
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Review for Order#{self.order_id} by {self.customer.username}"
+
+
+class MenuItemReview(models.Model):
+    """
+    Đánh giá chi tiết từng món trong đơn hàng
+    """
+    
+    review = models.ForeignKey(
+        Review,
+        on_delete=models.CASCADE,
+        related_name="menu_item_reviews"
+    )
+    
+    order_item = models.ForeignKey(
+        OrderItem,
+        on_delete=models.CASCADE,
+        related_name="reviews"
+    )
+    
+    rating = models.PositiveIntegerField(
+        default=5,
+        help_text="Đánh giá món (1-5 sao)"
+    )
+    
+    comment = models.TextField(
+        blank=True,
+        default="",
+        help_text="Nhận xét về món"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = [['review', 'order_item']]
+    
+    def __str__(self):
+        return f"Review for {self.order_item.name_snapshot} in Order#{self.order_item.order_id}"
+
+
+# =========================================================
+# UC-13: Complaint & Feedback Models
+# =========================================================
+
+class Complaint(models.Model):
+    """
+    UC-13: Khiếu nại / phản hồi
+    Customer có thể gửi khiếu nại về đơn hàng
+    Merchant/Admin có thể xử lý khiếu nại
+    """
+    
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Chờ xử lý"
+        IN_PROGRESS = "IN_PROGRESS", "Đang xử lý"
+        RESOLVED = "RESOLVED", "Đã giải quyết"
+        REJECTED = "REJECTED", "Từ chối"
+    
+    class Type(models.TextChoices):
+        ORDER_ISSUE = "ORDER_ISSUE", "Vấn đề về đơn hàng"
+        FOOD_QUALITY = "FOOD_QUALITY", "Chất lượng món ăn"
+        DELIVERY_ISSUE = "DELIVERY_ISSUE", "Vấn đề giao hàng"
+        PAYMENT_ISSUE = "PAYMENT_ISSUE", "Vấn đề thanh toán"
+        OTHER = "OTHER", "Khác"
+    
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="complaints",
+        help_text="Đơn hàng liên quan"
+    )
+    
+    customer = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="complaints_filed",
+        help_text="Khách hàng gửi khiếu nại"
+    )
+    
+    complaint_type = models.CharField(
+        max_length=32,
+        choices=Type.choices,
+        default=Type.OTHER
+    )
+    
+    title = models.CharField(
+        max_length=255,
+        help_text="Tiêu đề khiếu nại"
+    )
+    
+    description = models.TextField(
+        help_text="Mô tả chi tiết khiếu nại"
+    )
+    
+    status = models.CharField(
+        max_length=32,
+        choices=Status.choices,
+        default=Status.PENDING
+    )
+    
+    # Phản hồi từ merchant/admin
+    response = models.TextField(
+        blank=True,
+        default="",
+        help_text="Phản hồi từ merchant/admin"
+    )
+    
+    # Người xử lý (merchant hoặc admin)
+    handled_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="complaints_handled",
+        help_text="Người xử lý khiếu nại"
+    )
+    
+    resolved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Thời điểm giải quyết"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Complaint#{self.id} - {self.title} (Order#{self.order_id})"

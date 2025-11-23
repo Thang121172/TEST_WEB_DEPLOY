@@ -29,6 +29,7 @@ from .serializers import (
     ResetPasswordConfirmSerializer,
     OTPRequestDebugSerializer,
     MeSerializer,
+    LoginSerializer,
 )
 
 User = get_user_model()
@@ -72,16 +73,19 @@ def _create_and_send_otp(email: str, purpose: str, ttl_minutes: int = OTP_TTL_MI
     sent_ok = True
     debug_code = None
 
-    try:
-        # Gửi mail async (Celery task)
-        send_otp_email.delay(identifier, code, purpose) 
-    except Exception:
-        # Celery chưa chạy hoặc lỗi SMTP (chỉ báo lỗi)
+    # Trong dev mode, nếu Celery không chạy thì bỏ qua gửi email
+    # và trả debug_code để dev có thể test
+    if settings.DEBUG:
+        # Dev mode: không gửi email thật, chỉ trả debug code
         sent_ok = False
-
-    # Nếu DEBUG=True VÀ email không gửi được, trả code ra cho dev
-    if settings.DEBUG and not sent_ok:
         debug_code = code
+    else:
+        # Production: gửi email qua Celery
+        try:
+            send_otp_email.delay(identifier, code, purpose) 
+        except Exception:
+            # Celery chưa chạy hoặc lỗi SMTP
+            sent_ok = False
 
     return otp_obj, sent_ok, debug_code
 
@@ -121,12 +125,20 @@ class RegisterView(APIView):
         return Response(payload, status=status.HTTP_201_CREATED)
 
 
-class LoginView(TokenObtainPairView):
+class LoginView(APIView):
     """
     /api/accounts/login/ → access/refresh. 
-    Sử dụng SimpleJWT's TokenObtainPairView.
+    Custom login view để xử lý email thay vì username.
     """
     permission_classes = [AllowAny]
+    serializer_class = LoginSerializer
+    
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        result = serializer.save()
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class MeView(APIView):

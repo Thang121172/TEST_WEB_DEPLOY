@@ -14,12 +14,11 @@ services:
     env: python
     plan: free 
     
-    # Lệnh Build: Cài đặt dependencies và thu thập static files (Vẫn cần collectstatic ở đây)
-    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput"
+    # Lệnh Build: Cài đặt dependencies và thu thập static files
+    buildCommand: "cd backend && pip install -r requirements.txt && python manage.py collectstatic --noinput"
       
-    # Lệnh Start Command: ĐÃ KHẮC PHỤC LỖI MODULE NOT FOUND
-    # Trỏ chính xác đến module 'fastfood' của bạn.
-    startCommand: "gunicorn fastfood.wsgi:application"
+    # Lệnh Start Command: Sử dụng core.wsgi:application
+    startCommand: "cd backend && gunicorn core.wsgi:application --bind 0.0.0.0:$PORT"
     
     port: 8000
     
@@ -52,10 +51,10 @@ services:
     env: python
     
     # Lệnh Build tương tự Web Service
-    buildCommand: "pip install -r requirements.txt"
+    buildCommand: "cd backend && pip install -r requirements.txt"
     
     # Lệnh Start: Chỉ chạy migration sau khi Web Service được Deploy
-    startCommand: "python manage.py migrate"
+    startCommand: "cd backend && python manage.py migrate"
     
     envVars:
       - key: DATABASE_URL

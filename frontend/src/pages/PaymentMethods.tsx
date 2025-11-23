@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import FormCard from "../components/FormCard";
 import api from "../services/http";
 import { useAuthContext } from "../context/AuthContext";
+import { useLocationContext } from "../context/LocationContext";
+import LocationPermission from "../components/LocationPermission";
 
 type SummaryState = {
   subtotal: number;
@@ -14,18 +16,26 @@ type SummaryState = {
 export default function PaymentMethods() {
   const { user, isAuthenticated } = useAuthContext();
   const navigate = useNavigate();
-  const location = useLocation();
+  const routerLocation = useLocation();
+  const { address: locationAddress, location: userLocation, getCurrentLocation } = useLocationContext();
 
   // summary sẽ được truyền từ Cart khi navigate:
   // navigate('/payment', { state: { summary: cartSummary } })
-  const summaryFromState = (location.state as any)?.summary;
+  const summaryFromState = (routerLocation.state as any)?.summary;
   const summary: SummaryState | null = summaryFromState || null;
 
   // form state
   const [address, setAddress] = useState(
-    "123 Lê Lợi, Quận 1, TP.HCM" // có thể sửa tuỳ bạn
+    locationAddress || "123 Lê Lợi, Quận 1, TP.HCM" // Sử dụng địa chỉ từ location nếu có
   );
   const [note, setNote] = useState("");
+
+  // Tự động điền địa chỉ khi có vị trí
+  useEffect(() => {
+    if (locationAddress && !address) {
+      setAddress(locationAddress);
+    }
+  }, [locationAddress, address]);
 
   // phương thức thanh toán
   const [paymentMethod, setPaymentMethod] = useState<"cod" | "card">("cod");
@@ -164,19 +174,51 @@ export default function PaymentMethods() {
 
           {/* Địa chỉ giao hàng */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Địa chỉ giao hàng
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">
+                Địa chỉ giao hàng
+              </label>
+              {!userLocation && (
+                <button
+                  type="button"
+                  onClick={getCurrentLocation}
+                  className="text-xs text-grabGreen-700 hover:text-grabGreen-800 font-medium flex items-center space-x-1"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>Lấy vị trí hiện tại</span>
+                </button>
+              )}
+            </div>
             <input
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-grabGreen-500 focus:border-grabGreen-500 transition duration-150"
               placeholder="Nhập địa chỉ nhận hàng"
             />
-            <p className="text-[11px] text-gray-400 mt-1">
-              Shipper sẽ giao đơn đến địa chỉ này.
-            </p>
+            {userLocation && (
+              <p className="text-xs text-green-600 mt-1 flex items-center space-x-1">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Địa chỉ được lấy từ vị trí của bạn</span>
+              </p>
+            )}
+            {!userLocation && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                Shipper sẽ giao đơn đến địa chỉ này. Bạn có thể nhấn "Lấy vị trí hiện tại" để tự động điền.
+              </p>
+            )}
           </div>
+
+          {/* Location Permission Prompt (chỉ hiển thị khi chưa có vị trí) */}
+          {!userLocation && (
+            <div className="mt-4">
+              <LocationPermission showOnlyWhenDenied={false} />
+            </div>
+          )}
 
           {/* Ghi chú cho cửa hàng */}
           <div>

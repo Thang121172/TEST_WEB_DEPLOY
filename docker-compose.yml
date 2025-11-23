@@ -13,9 +13,9 @@ services:
       POSTGRES_DB: fastfood
       POSTGRES_USER: app
       POSTGRES_PASSWORD: 123456
-    # Map port 5433 trên host tới 5432 trong container
+    # Map port 5434 trên host tới 5432 trong container (tránh conflict với APP database ở 5433)
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -43,7 +43,7 @@ services:
     container_name: fastfood_backend
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: Dockerfile
     # Đảm bảo DB và Redis khởi động trước
     depends_on:
       db:
@@ -59,6 +59,8 @@ services:
       POSTGRES_PORT: "5432"
       POSTGRES_USER: app
       POSTGRES_PASSWORD: 123456
+      # Database port trên host (để kết nối từ bên ngoài)
+      DATABASE_URL: postgresql://app:123456@db:5432/fastfood
     volumes:
       # Mount thư mục hiện tại vào /app để phát triển
       - .:/app
@@ -81,7 +83,7 @@ services:
     # Dùng chung build context và Dockerfile với backend
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: Dockerfile
     # Phụ thuộc vào backend và redis
     depends_on:
       - backend

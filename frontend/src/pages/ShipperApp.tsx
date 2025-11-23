@@ -22,55 +22,17 @@ interface ShipperSummary {
   current_orders: number;
 }
 
-// ===================================
-// MOCK DATA
-// ===================================
-
-const mockSummary: ShipperSummary = {
-  total_deliveries: 450,
-  total_earnings: 15300000,
-  current_orders: 1,
-};
-
-const mockAvailableOrders: Order[] = [
-  {
-    id: 2005,
-    store_name: 'Phở 24',
-    store_address: '108 Nguyễn Du, Q.1',
-    customer_address: '25/5 Lê Lợi, Q.1',
-    delivery_fee: 35000,
-    distance_km: 1.5,
-    status: 'Ready',
-  },
-  {
-    id: 2006,
-    store_name: 'Trà Sữa ToCoToCo',
-    store_address: '50A Cao Thắng, Q.3',
-    customer_address: '30/1 Trần Quốc Toản, Q.3',
-    delivery_fee: 40000,
-    distance_km: 2.1,
-    status: 'Ready',
-  },
-  {
-    id: 2007,
-    store_name: 'Bánh Mì Huỳnh Hoa',
-    store_address: '26 Lê Thị Riêng, Q.1',
-    customer_address: '5/7 Bùi Viện, Q.1',
-    delivery_fee: 28000,
-    distance_km: 0.8,
-    status: 'Ready',
-  },
-];
-
-const mockInProgressOrder: Order | null = {
-  id: 2001,
-  store_name: 'Cơm Tấm Sài Gòn',
-  store_address: '123 Đường A, Q.Bình Thạnh',
-  customer_address: '55/1 Hẻm C, Q.Gò Vấp',
-  delivery_fee: 55000,
-  distance_km: 5.2,
-  status: 'In Progress',
-};
+// API Response types
+interface OrderResponse {
+  id: number;
+  status: string;
+  created_at: string;
+  merchant: {
+    id: number;
+    name: string;
+  };
+  total_amount: string;
+}
 
 // ===================================
 // UTILITY
@@ -107,7 +69,8 @@ const StatCard: React.FC<{
 const OrderCard: React.FC<{
   order: Order;
   onAction: (orderId: number, action: 'accept' | 'complete') => void;
-}> = ({ order, onAction }) => {
+  onReportIssue?: (orderId: number) => void;
+}> = ({ order, onAction, onReportIssue }) => {
   const isAvailable = order.status === 'Ready';
 
   const handleAction = () => {
@@ -163,16 +126,26 @@ const OrderCard: React.FC<{
       </div>
 
       {/* Action */}
-      <button
-        onClick={handleAction}
-        className={`w-full py-2 text-white rounded-full font-semibold transition duration-150 shadow-md ${
-          isAvailable
-            ? 'bg-grabGreen-700 hover:bg-grabGreen-800'
-            : 'bg-blue-600 hover:bg-blue-700'
-        }`}
-      >
-        {isAvailable ? 'Nhận đơn này' : 'Hoàn tất giao hàng'}
-      </button>
+      <div className="space-y-2">
+        <button
+          onClick={handleAction}
+          className={`w-full py-2 text-white rounded-full font-semibold transition duration-150 shadow-md ${
+            isAvailable
+              ? 'bg-grabGreen-700 hover:bg-grabGreen-800'
+              : 'bg-blue-600 hover:bg-blue-700'
+          }`}
+        >
+          {isAvailable ? 'Nhận đơn này' : 'Hoàn tất giao hàng'}
+        </button>
+        {!isAvailable && onReportIssue && (
+          <button
+            onClick={() => onReportIssue(order.id)}
+            className="w-full py-2 text-red-600 border-2 border-red-600 rounded-full font-semibold transition duration-150 hover:bg-red-50"
+          >
+            Báo cáo vấn đề
+          </button>
+        )}
+      </div>
     </div>
   );
 };
@@ -189,29 +162,55 @@ export default function ShipperApp() {
   const [inProgressOrder, setInProgressOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Lấy data trang Shipper (mock)
+  // Lấy data từ API
   const fetchShipperData = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('authToken');
-      // TODO: gọi API thật sau, ví dụ:
-      // const summaryRes = await api.get('/shipper/summary', { headers: { Authorization: `Bearer ${token}` } })
-      // const availableRes = await api.get('/shipper/orders/available', ...)
-      // const currentRes = await api.get('/shipper/orders/current', ...)
-
-      // Mock fallback
-      setTimeout(() => {
-        setSummary(mockSummary);
-        setAvailableOrders(mockAvailableOrders);
-        setInProgressOrder(mockInProgressOrder);
-        setLoading(false);
-      }, 800);
+      // Lấy danh sách đơn hàng chưa giao xong
+      const response = await api.get('/shipper/');
+      const orders: OrderResponse[] = response.data || [];
+      
+      // Phân loại đơn hàng
+      const available = orders.filter(o => o.status === 'PENDING' || o.status === 'READY_FOR_PICKUP');
+      const inProgress = orders.find(o => o.status === 'DELIVERING' && o.merchant) || null;
+      
+      // Transform data
+      const availableOrders: Order[] = available.map(o => ({
+        id: o.id,
+        store_name: o.merchant.name,
+        store_address: '', // API chưa trả về, có thể thêm sau
+        customer_address: '', // API chưa trả về, có thể thêm sau
+        delivery_fee: 0, // API chưa trả về, có thể tính sau
+        distance_km: 0, // API chưa trả về, có thể tính sau
+        status: o.status === 'READY_FOR_PICKUP' ? 'Ready' : 'Pending',
+      }));
+      
+      const inProgressOrder: Order | null = inProgress ? {
+        id: inProgress.id,
+        store_name: inProgress.merchant.name,
+        store_address: '',
+        customer_address: '',
+        delivery_fee: 0,
+        distance_km: 0,
+        status: 'In Progress',
+      } : null;
+      
+      // Tính summary (có thể gọi API riêng sau)
+      const summary: ShipperSummary = {
+        total_deliveries: 0, // Cần API endpoint riêng
+        total_earnings: 0, // Cần API endpoint riêng
+        current_orders: inProgress ? 1 : 0,
+      };
+      
+      setSummary(summary);
+      setAvailableOrders(availableOrders);
+      setInProgressOrder(inProgressOrder);
+      setLoading(false);
     } catch (e) {
       console.error('Failed to fetch shipper data:', e);
-      // fallback mock
-      setSummary(mockSummary);
-      setAvailableOrders(mockAvailableOrders);
-      setInProgressOrder(mockInProgressOrder);
+      setSummary(null);
+      setAvailableOrders([]);
+      setInProgressOrder(null);
       setLoading(false);
     }
   };
@@ -221,58 +220,68 @@ export default function ShipperApp() {
   }, []);
 
   // Nhận đơn hoặc hoàn tất giao
-  const handleOrderAction = (
+  const handleOrderAction = async (
     orderId: number,
     action: 'accept' | 'complete'
   ) => {
     setLoading(true);
 
-    // TODO: gọi API:
-    //  - accept:   POST /api/shipper/orders/{orderId}/accept
-    //  - complete: POST /api/shipper/orders/{orderId}/update_status {status: "DELIVERED"}
-    //
-    // hiện tại dùng mock:
-    setTimeout(() => {
+    try {
       if (action === 'accept') {
-        const acceptedOrder = availableOrders.find((o) => o.id === orderId);
-        if (acceptedOrder) {
-          // Chuyển đơn đó thành in-progress
-          setAvailableOrders((prev) => prev.filter((o) => o.id !== orderId));
-          setInProgressOrder({ ...acceptedOrder, status: 'In Progress' });
-          setSummary((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  current_orders: 1,
-                }
-              : prev
-          );
-          console.log(`Đã nhận đơn hàng #${orderId}.`);
-        }
+        // Gọi API để nhận đơn
+        await api.post(`/shipper/${orderId}/pickup/`);
+        
+        // Refresh data
+        await fetchShipperData();
+        console.log(`Đã nhận đơn hàng #${orderId}.`);
       } else if (action === 'complete') {
-        // Giao xong
-        setInProgressOrder(null);
-        setSummary((prev) =>
-          prev
-            ? {
-                ...prev,
-                current_orders: 0,
-                total_deliveries: prev.total_deliveries + 1,
-                total_earnings:
-                  prev.total_earnings +
-                  (inProgressOrder?.delivery_fee || 0),
-              }
-            : prev
-        );
-
-        console.log(`Đã hoàn tất đơn hàng #${orderId}.`);
-
-        // Sau khi hoàn thành thì làm mới
-        fetchShipperData();
+        // Cập nhật trạng thái đơn hàng thành DELIVERED
+        await api.patch(`/shipper/${orderId}/`, {
+          status: 'DELIVERED'
+        });
+        
+        // Refresh data
+        await fetchShipperData();
+        console.log(`Đã hoàn tất giao đơn hàng #${orderId}.`);
       }
-
+    } catch (e) {
+      console.error(`Failed to ${action} order:`, e);
+      alert(`Không thể ${action === 'accept' ? 'nhận' : 'hoàn tất'} đơn hàng. Vui lòng thử lại.`);
+    } finally {
       setLoading(false);
-    }, 500);
+    }
+  };
+
+  // Báo cáo vấn đề
+  const handleReportIssue = (orderId: number) => {
+    const issueType = prompt('Chọn loại vấn đề:\n1. RETURNED - Khách hàng trả lại\n2. FAILED_DELIVERY - Giao hàng thất bại\n\nNhập 1 hoặc 2:');
+    if (!issueType) return;
+
+    const type = issueType === '1' ? 'RETURNED' : issueType === '2' ? 'FAILED_DELIVERY' : null;
+    if (!type) {
+      alert('Lựa chọn không hợp lệ');
+      return;
+    }
+
+    const reason = prompt('Nhập lý do chi tiết:');
+    if (!reason) return;
+
+    setLoading(true);
+    api.post(`/shipper/${orderId}/report_issue/`, {
+      issue_type: type,
+      reason: reason
+    })
+      .then(() => {
+        alert('Đã báo cáo vấn đề thành công');
+        fetchShipperData();
+      })
+      .catch((error) => {
+        console.error('Failed to report issue:', error);
+        alert('Không thể báo cáo vấn đề. Vui lòng thử lại.');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   };
 
   // Emoji icons dùng cho summary cards
@@ -328,6 +337,7 @@ export default function ShipperApp() {
               <OrderCard
                 order={inProgressOrder}
                 onAction={handleOrderAction}
+                onReportIssue={handleReportIssue}
               />
             ) : (
               <div className="p-8 text-center bg-white rounded-xl shadow-lg text-gray-500 border border-dashed border-gray-300">

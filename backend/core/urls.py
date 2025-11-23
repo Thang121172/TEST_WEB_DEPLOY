@@ -6,7 +6,10 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 # QUAN TRỌNG: Sửa lỗi "App Not Ready" bằng cách dùng đường dẫn tuyệt đối (backend.<app>.views)
-from orders.views import OrderViewSet, MerchantViewSet, ShipperViewSet
+from orders.views import (
+    OrderViewSet, MerchantViewSet, ShipperViewSet, merchant_dashboard,
+    ReviewViewSet, ComplaintViewSet, InventoryViewSet, MerchantOrderViewSet, AdminViewSet
+)
 # Khi có thêm viewset khác (InventoryViewSet, v.v.) bạn có thể register thêm ở đây
 
 # ----- Healthcheck đơn giản cho container -----
@@ -22,8 +25,11 @@ router = DefaultRouter()
 router.register(r"orders", OrderViewSet, basename="order")
 router.register(r"merchant", MerchantViewSet, basename="merchant")
 router.register(r"shipper", ShipperViewSet, basename="shipper")
-# ví dụ sau này:
-# router.register(r"inventory", InventoryViewSet, basename="inventory")
+router.register(r"reviews", ReviewViewSet, basename="review")
+router.register(r"complaints", ComplaintViewSet, basename="complaint")
+router.register(r"inventory", InventoryViewSet, basename="inventory")
+router.register(r"merchant-orders", MerchantOrderViewSet, basename="merchant-order")
+router.register(r"admin", AdminViewSet, basename="admin")
 
 
 urlpatterns = [
@@ -38,6 +44,9 @@ urlpatterns = [
 
     # API REST chính (orders / merchant / shipper ...)
     path("api/", include(router.urls)),
+    
+    # Merchant dashboard endpoint
+    path("api/merchant/dashboard/", merchant_dashboard, name="merchant-dashboard"),
 
     # Auth / đăng ký / đăng nhập / OTP
     # Đã chuyển sang đường dẫn tuyệt đối: "backend.accounts.urls"

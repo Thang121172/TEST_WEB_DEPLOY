@@ -415,6 +415,23 @@ export default function MerchantConfirmOrder() {
                 Từ chối Đơn hàng
               </button>
             </div>
+          ) : orderDetails.status === "Confirmed" || orderDetails.status === "Ready" ? (
+            <div className="flex gap-3">
+              <Link
+                to={`/merchant/orders/${orderDetails.order_id}/handle-out-of-stock`}
+                className="flex-1 py-3 text-lg rounded-xl font-bold transition duration-150 shadow-md flex items-center justify-center border bg-orange-100 text-orange-700 border-orange-300 hover:bg-orange-200"
+              >
+                ⚠️ Xử lý thiếu kho
+              </Link>
+              {orderDetails.payment_method && orderDetails.payment_method !== "Cash" && (
+                <Link
+                  to={`/merchant/orders/${orderDetails.order_id}/refund`}
+                  className="flex-1 py-3 text-lg rounded-xl font-bold transition duration-150 shadow-md flex items-center justify-center border bg-yellow-100 text-yellow-700 border-yellow-300 hover:bg-yellow-200"
+                >
+                  💰 Hoàn tiền
+                </Link>
+              )}
+            </div>
           ) : (
             <div className="p-4 bg-grabGreen-50 text-grabGreen-800 rounded-xl font-medium border border-grabGreen-300 text-center text-sm">
               Đơn hàng này đã được xử lý.{" "}

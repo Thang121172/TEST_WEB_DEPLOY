@@ -39,27 +39,27 @@ export default function Login() {
         password,
       });
 
-      const accessToken = tokenResp.data?.tokens?.access; // <--- Cần kiểm tra lại cấu trúc: tokens.access
-      const refreshToken = tokenResp.data?.tokens?.refresh; // <--- Cần kiểm tra lại cấu trúc: tokens.refresh
+      const accessToken = tokenResp.data?.tokens?.access; // <--- Cần kiểm tra lại cấu trúc: tokens.access
+      const refreshToken = tokenResp.data?.tokens?.refresh; // <--- Cần kiểm tra lại cấu trúc: tokens.refresh
       const loginRole = tokenResp.data?.role; // <--- Lấy role từ Response API Login
 
-      if (!accessToken) {
-        setError('Đăng nhập thất bại: không nhận được token.');
-        setSubmitting(false);
-        return;
-      }
+      if (!accessToken) {
+        setError('Đăng nhập thất bại: không nhận được token.');
+        setSubmitting(false);
+        return;
+      }
 
-      // Lưu refresh token (optional, để sau này gọi /token/refresh/)
-      if (refreshToken) {
-        localStorage.setItem('refreshToken', refreshToken);
-      }
+      // Lưu access token vào localStorage TRƯỚC khi gọi /me/
+      localStorage.setItem('authToken', accessToken);
+      
+      // Lưu refresh token (optional, để sau này gọi /token/refresh/)
+      if (refreshToken) {
+        localStorage.setItem('refreshToken', refreshToken);
+      }
 
-      // 2. Gọi /api/accounts/me/ để lấy thông tin user (id, email, role,...)
-      const meResp = await api.get('/accounts/me/', {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      // 2. Gọi /api/accounts/me/ để lấy thông tin user (id, email, role,...)
+      // Interceptor trong http.ts sẽ tự động thêm token từ localStorage
+      const meResp = await api.get('/accounts/me/');
 
       // backend MeView trả:
       // { id, username, email, role }

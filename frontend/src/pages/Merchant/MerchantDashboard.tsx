@@ -8,18 +8,18 @@ import api from '../../services/http';
 // ===================================
 
 interface OrderSummary {
-  id: number;
+  order_id: number;
   customer_name: string;
-  items_count: number;
-  total_price: number;
-  time_ago: string;
-  status: 'Pending' | 'Confirmed' | 'Ready' | 'Cancelled';
+  total: number;
+  payment_status: string;
+  status: string;
+  time: string;
 }
 
 interface MerchantStats {
-  total_orders: number;
-  total_revenue: number;
-  pending_orders: number;
+  orders_today: number;
+  revenue_today: number;
+  sold_out_items: number;
   store_rating: number;
 }
 
@@ -27,47 +27,24 @@ interface MerchantStats {
 // MOCK DATA & UTILITY
 // ===================================
 
-const mockStats: MerchantStats = {
-  total_orders: 1250,
-  total_revenue: 155000000,
-  pending_orders: 3,
-  store_rating: 4.8,
-};
-
-const mockRecentOrders: OrderSummary[] = [
-  {
-    id: 9001,
-    customer_name: 'Trần Văn B',
-    items_count: 2,
-    total_price: 105000,
-    time_ago: '5 phút trước',
-    status: 'Pending',
-  },
-  {
-    id: 9002,
-    customer_name: 'Lê Thị C',
-    items_count: 1,
-    total_price: 70000,
-    time_ago: '10 phút trước',
-    status: 'Pending',
-  },
-  {
-    id: 9003,
-    customer_name: 'Phạm Thanh D',
-    items_count: 4,
-    total_price: 210000,
-    time_ago: '30 phút trước',
-    status: 'Confirmed',
-  },
-  {
-    id: 9004,
-    customer_name: 'Nguyễn Văn E',
-    items_count: 3,
-    total_price: 155000,
-    time_ago: '1 giờ trước',
-    status: 'Ready',
-  },
-];
+// API Response types
+interface DashboardResponse {
+  merchant: {
+    id: number;
+    name: string;
+  };
+  orders_today: number;
+  revenue_today: string;
+  sold_out: number;
+  recent_orders: Array<{
+    order_id: number;
+    customer_username: string;
+    total: string;
+    payment_status: string;
+    status: string;
+    time: string;
+  }>;
+}
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('vi-VN', {
@@ -110,16 +87,16 @@ const OrderRow: React.FC<{ order: OrderSummary }> = ({ order }) => {
   return (
     <tr className="border-b hover:bg-gray-50 transition duration-100">
       <td className="py-3 px-4 text-sm font-medium text-gray-900">
-        #{order.id}
+        #{order.order_id}
       </td>
       <td className="py-3 px-4 text-sm text-gray-600">
         {order.customer_name}
       </td>
       <td className="py-3 px-4 text-sm text-gray-600">
-        {order.items_count} món
+        {/* Items count - API chưa trả về */}
       </td>
       <td className="py-3 px-4 text-sm font-semibold text-grabGreen-700">
-        {formatCurrency(order.total_price)}
+        {formatCurrency(order.total)}
       </td>
       <td className="py-3 px-4">
         <span
@@ -134,10 +111,10 @@ const OrderRow: React.FC<{ order: OrderSummary }> = ({ order }) => {
             : 'Đã hủy'}
         </span>
       </td>
-      <td className="py-3 px-4 text-sm text-gray-500">{order.time_ago}</td>
+      <td className="py-3 px-4 text-sm text-gray-500">{order.time}</td>
       <td className="py-3 px-4 text-right">
         <Link
-          to={`/merchant/orders/${order.id}/confirm`}
+          to={`/merchant/orders/${order.order_id}/confirm`}
           className="text-grabGreen-600 hover:text-grabGreen-800 text-sm font-medium transition duration-150"
         >
           Chi tiết &rarr;
@@ -177,26 +154,40 @@ export default function MerchantDashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // TODO: khi backend sẵn: gọi /api/merchant_dashboard/ kèm Bearer token
-      // const token = localStorage.getItem('authToken');
-      // const r = await api.get('/merchant_dashboard/', {
-      //   headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      // });
-      // setStats(r.data?.stats ?? ... );
-      // setRecentOrders(r.data?.recent_orders ?? ... );
-
-      // Hiện tại dùng mock
-      setTimeout(() => {
-        setStats(mockStats);
-        setRecentOrders(mockRecentOrders);
-        setLoading(false);
-      }, 800);
+      // Gọi API dashboard
+      const response = await api.get('/merchant/dashboard/');
+      const data: DashboardResponse = response.data;
+      
+      // Transform data
+      const stats: MerchantStats = {
+        orders_today: data.orders_today || 0,
+        revenue_today: parseFloat(data.revenue_today || '0'),
+        sold_out_items: data.sold_out || 0,
+        store_rating: 4.5, // API chưa trả về, có thể thêm sau
+      };
+      
+      const recentOrders: OrderSummary[] = (data.recent_orders || []).map(o => ({
+        order_id: o.order_id,
+        customer_name: o.customer_username,
+        total: parseFloat(o.total || '0'),
+        payment_status: o.payment_status,
+        status: o.status,
+        time: o.time,
+      }));
+      
+      setStats(stats);
+      setRecentOrders(recentOrders);
+      setLoading(false);
     } catch (e) {
       console.error('Failed to fetch merchant dashboard data:', e);
-
-      // fallback mock nếu gọi API fail
-      setStats(mockStats);
-      setRecentOrders(mockRecentOrders);
+      // Trả về empty data thay vì mock
+      setStats({
+        orders_today: 0,
+        revenue_today: 0,
+        sold_out_items: 0,
+        store_rating: 0,
+      });
+      setRecentOrders([]);
       setLoading(false);
     }
   };
@@ -234,25 +225,53 @@ export default function MerchantDashboard() {
         Dashboard Cửa hàng - {user?.name || 'Cửa hàng của tôi'}
       </h1>
 
+      {/* Quick Actions */}
+      <div className="mb-6 flex flex-wrap gap-3">
+        <Link
+          to="/merchant/menu"
+          className="px-4 py-2 bg-grabGreen-600 hover:bg-grabGreen-700 text-white font-semibold rounded-lg transition-colors"
+        >
+          📋 Quản lý Menu
+        </Link>
+        <Link
+          to="/merchant/inventory"
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+        >
+          📦 Quản lý Kho
+        </Link>
+        <Link
+          to="/merchant/complaints"
+          className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg transition-colors"
+        >
+          📢 Khiếu nại
+        </Link>
+        <Link
+          to="/merchant/revenue"
+          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors"
+        >
+          💰 Doanh thu
+        </Link>
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <StatCard
-          title="Đơn hàng Chờ xác nhận"
-          value={stats.pending_orders}
-          color="text-red-500"
-          icon="🔔"
+          title="Đơn hàng Hôm nay"
+          value={stats.orders_today}
+          color="text-blue-500"
+          icon="📈"
         />
         <StatCard
-          title="Tổng Doanh thu"
-          value={formatCurrency(stats.total_revenue)}
+          title="Doanh thu Hôm nay"
+          value={formatCurrency(stats.revenue_today)}
           color="text-grabGreen-700"
           icon="💰"
         />
         <StatCard
-          title="Tổng đơn đã hoàn thành"
-          value={stats.total_orders}
-          color="text-blue-500"
-          icon="📈"
+          title="Món hết hàng"
+          value={stats.sold_out_items}
+          color="text-red-500"
+          icon="🔔"
         />
         <StatCard
           title="Đánh giá Cửa hàng"
@@ -304,7 +323,7 @@ export default function MerchantDashboard() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {recentOrders.map((order) => (
-                  <OrderRow key={order.id} order={order} />
+                  <OrderRow key={order.order_id} order={order} />
                 ))}
               </tbody>
             </table>

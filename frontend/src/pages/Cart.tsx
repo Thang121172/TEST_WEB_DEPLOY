@@ -22,30 +22,10 @@ interface CartSummary {
   total: number;
 }
 
-// ===================================
-// Mock data tạm thời
-// ===================================
-const mockCart: CartItem[] = [
-  {
-    id: 1,
-    product_name: 'Cơm Tấm Sườn Bì Chả',
-    store_name: 'Cơm Tấm Kiều Kiều',
-    price: 55000,
-    quantity: 1,
-    image_url: 'https://placehold.co/100x100/A3E635/FFFFFF?text=CT',
-  },
-  {
-    id: 2,
-    product_name: 'Trà Sữa Trân Châu Đường Đen',
-    store_name: 'Trà Sữa Bobapop',
-    price: 45000,
-    quantity: 2,
-    image_url: 'https://placehold.co/100x100/34D399/FFFFFF?text=TS',
-  },
-];
-
-const mockDeliveryFee = 35000;
-const mockDiscount = 10000;
+// Constants
+const DELIVERY_FEE = 35000;
+const DISCOUNT_THRESHOLD = 200000;
+const DISCOUNT_AMOUNT = 10000;
 
 // ===================================
 // Utils
@@ -204,21 +184,22 @@ export default function CartPage() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Giả lập fetch giỏ hàng của user
+  // Lấy giỏ hàng từ localStorage (hoặc có thể gọi API sau)
   const fetchCartData = async () => {
     setLoading(true);
     try {
-      // TODO: ví dụ sau này gọi thật:
-      // const res = await api.get('/cart/');
-      // setCartItems(res.data.items);
-
-      setTimeout(() => {
-        setCartItems(mockCart);
-        setLoading(false);
-      }, 500);
+      // Lấy từ localStorage (có thể thay bằng API call sau)
+      const savedCart = localStorage.getItem('cart');
+      if (savedCart) {
+        const cartData = JSON.parse(savedCart);
+        setCartItems(cartData);
+      } else {
+        setCartItems([]);
+      }
+      setLoading(false);
     } catch (e) {
       console.error('Failed to fetch cart data:', e);
-      setCartItems(mockCart); // fallback
+      setCartItems([]);
       setLoading(false);
     }
   };
@@ -235,8 +216,8 @@ export default function CartPage() {
       (sum, item) => sum + item.price * item.quantity,
       0
     );
-    const deliveryFee = subtotal > 0 ? mockDeliveryFee : 0;
-    const discount = subtotal > 200000 ? mockDiscount : 0;
+    const deliveryFee = subtotal > 0 ? DELIVERY_FEE : 0;
+    const discount = subtotal > DISCOUNT_THRESHOLD ? DISCOUNT_AMOUNT : 0;
     const total = subtotal + deliveryFee - discount;
 
     return {
@@ -249,15 +230,23 @@ export default function CartPage() {
 
   // Handlers
   const handleUpdateQuantity = (id: number, newQuantity: number) => {
-    setCartItems((prev) =>
-      prev.map((item) =>
+    setCartItems((prev) => {
+      const updated = prev.map((item) =>
         item.id === id ? { ...item, quantity: newQuantity } : item
-      )
-    );
+      );
+      // Lưu vào localStorage
+      localStorage.setItem('cart', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const handleRemoveItem = (id: number) => {
-    setCartItems((prev) => prev.filter((item) => item.id !== id));
+    setCartItems((prev) => {
+      const updated = prev.filter((item) => item.id !== id);
+      // Lưu vào localStorage
+      localStorage.setItem('cart', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const handleCheckout = () => {

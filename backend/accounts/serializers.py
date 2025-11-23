@@ -135,8 +135,8 @@ class RegisterMerchantSerializer(serializers.Serializer):
         # 4. Thêm user đó làm owner trong MerchantMember
         MerchantMember.objects.create(user=user, merchant=merchant, role="owner")
 
-        # 5. TRẢ VỀ CHỈ USER OBJECT 
-        return user
+        # 5. TRẢ VỀ USER VÀ MERCHANT
+        return user, merchant
 
 
 # =========================================================
@@ -238,17 +238,31 @@ class RegisterConfirmOTPSerializer(serializers.Serializer):
 # 4. Đăng nhập (email + password) -> trả JWT
 # =========================================================
 class LoginSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+    # Nhận cả username hoặc email (linh hoạt)
+    username = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
     password = serializers.CharField(write_only=True, trim_whitespace=False)
 
     def validate(self, attrs):
-        email = attrs.get("email", "").strip().lower()
+        # Lấy username hoặc email (ưu tiên username nếu có)
+        username = attrs.get("username") or ""
+        email = attrs.get("email") or ""
+        username_or_email = (username.strip().lower() if username else "") or (email.strip().lower() if email else "")
         password = attrs.get("password", "")
 
-        # do chúng ta tạo user với username=email
-        user = authenticate(username=email, password=password)
+        if not username_or_email:
+            raise serializers.ValidationError({"detail": "Vui lòng nhập email hoặc username."})
+        
+        if not password:
+            raise serializers.ValidationError({"detail": "Vui lòng nhập mật khẩu."})
+
+        # do chúng ta tạo user với username=email, nên có thể dùng username_or_email để authenticate
+        user = authenticate(username=username_or_email, password=password)
         if not user:
-            raise serializers.ValidationError("Sai email hoặc mật khẩu.")
+            raise serializers.ValidationError({"detail": "Sai email/username hoặc mật khẩu."})
+        
+        if not user.is_active:
+            raise serializers.ValidationError({"detail": "Tài khoản chưa được kích hoạt. Vui lòng kiểm tra email để kích hoạt tài khoản."})
 
         attrs["user"] = user
         return attrs
@@ -284,7 +298,6 @@ class MeSerializer(serializers.ModelSerializer):
             "id",
             "username",
             "email",
-            "phone",
             "role",
             "is_active",
             "is_staff",
