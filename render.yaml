@@ -2,7 +2,7 @@
 # File này định nghĩa Database, Web Service (Django) và Migration Job.
 services:
   # 1. Dịch vụ Cơ sở dữ liệu PostgreSQL
-  - type: postgres
+  - type: postgresql
     name: fastfood-db
     plan: free 
     databaseName: fastfood_db
