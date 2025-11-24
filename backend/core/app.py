@@ -11,13 +11,13 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
 # Chúng ta chỉ gọi setup() nếu nó chưa được gọi, hoặc nếu đây là một script độc lập.
 
 # Gọi django.setup() và bắt lỗi reentrant
-try:
-    django.setup()
-except RuntimeError as e:
-    # Bắt lỗi nếu populate() đã xảy ra (thường khi chạy manage.py)
-    # Nếu đây là lỗi reentrant, ta bỏ qua, nếu không ta raise lỗi
-    if "populate() isn't reentrant" not in str(e):
-        raise
+    try:
+        django.setup()
+    except RuntimeError as e:
+        # Bắt lỗi nếu populate() đã xảy ra (thường khi chạy manage.py)
+        # Nếu đây là lỗi reentrant, ta bỏ qua, nếu không ta raise lỗi
+        if "populate() isn't reentrant" not in str(e):
+            raise
     
 # 3. Tạo ứng dụng Celery
 app = Celery("core")
