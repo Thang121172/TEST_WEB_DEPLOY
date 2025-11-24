@@ -1,9 +1,10 @@
 # Cấu hình Render Blueprint cho dự án FastFood Django
-# LƯU Ý: PostgreSQL Database cần tạo THỦ CÔNG trước (không hỗ trợ trong Blueprint)
-# Sau đó cập nhật DATABASE_URL trong environment variables
+# LƯU Ý: 
+# - PostgreSQL Database cần tạo THỦ CÔNG trước
+# - Migration sẽ chạy thủ công qua Shell sau khi deploy
 
 services:
-  # 2. Dịch vụ Web Django/DRF (Nơi ứng dụng của bạn chạy)
+  # Dịch vụ Web Django/DRF (Nơi ứng dụng của bạn chạy)
   - type: web
     name: fastfood-backend
     env: python
@@ -37,25 +38,3 @@ services:
       # CELERY BROKER URL (Nếu bạn dùng Celery, hãy thêm URL Redis tại đây)
       - key: CELERY_BROKER_URL
         value: ""
-
-  # 3. Dịch vụ Job để chạy Migration (Tùy chọn)
-  - type: job
-    name: fastfood-migrate
-    env: python
-    plan: free
-    
-    # Lệnh Build tương tự Web Service
-    buildCommand: "cd backend && pip install -r requirements.txt"
-    
-    # Lệnh Start: Chỉ chạy migration sau khi Web Service được Deploy
-    startCommand: "cd backend && python manage.py migrate"
-    
-    envVars:
-      # DATABASE_URL - Cần thêm MANUAL (giống web service)
-      - key: SECRET_KEY
-        fromService:
-          type: web
-          name: fastfood-backend
-          envVarKey: SECRET_KEY
-      - key: DJANGO_SETTINGS_MODULE
-        value: core.settings.prod
