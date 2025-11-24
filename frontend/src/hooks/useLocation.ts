@@ -80,7 +80,9 @@ export function useLocation(): UseLocationReturn {
         console.error('Failed to parse saved location:', e)
       }
     } else {
-      console.log('⚠️ Không có location trong localStorage')
+      // Không có location trong localStorage - điều này bình thường khi lần đầu truy cập
+      // App sẽ tự động yêu cầu quyền location khi cần
+      // console.debug('Không có location trong localStorage')
     }
   }, [])
 
