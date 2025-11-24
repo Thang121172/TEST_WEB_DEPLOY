@@ -14,9 +14,8 @@ services:
     buildCommand: "cd backend && pip install -r requirements.txt && python manage.py collectstatic --noinput"
       
     # Lệnh Start Command: Sử dụng core.wsgi:application
+    # Render tự động set $PORT, không cần khai báo port trong yaml
     startCommand: "cd backend && gunicorn core.wsgi:application --bind 0.0.0.0:$PORT"
-    
-    port: 8000
     
     envVars:
       # DATABASE_URL - Cần thêm MANUAL sau khi tạo PostgreSQL database
