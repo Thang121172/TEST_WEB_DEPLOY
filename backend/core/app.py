@@ -10,25 +10,14 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
 # Nếu Celery app (được import) gọi lại setup(), sẽ gây ra RuntimeError.
 # Chúng ta chỉ gọi setup() nếu nó chưa được gọi, hoặc nếu đây là một script độc lập.
 
-# Kiểm tra xem Django đã được thiết lập chưa trước khi gọi lại
+# Gọi django.setup() và bắt lỗi reentrant
 try:
-    from django.conf import settings
-    if not settings.configured:
-        django.setup()
-except (RuntimeError, ImportError) as e:
-    # Nếu chưa có settings, thử setup Django
+    django.setup()
+except RuntimeError as e:
     # Bắt lỗi nếu populate() đã xảy ra (thường khi chạy manage.py)
-    if "populate() isn't reentrant" in str(e):
-        # Django đã được setup rồi, bỏ qua
-        pass
-    else:
-        # Thử setup Django nếu chưa
-        try:
-            django.setup()
-        except RuntimeError as setup_error:
-            # Nếu vẫn lỗi reentrant, bỏ qua
-            if "populate() isn't reentrant" not in str(setup_error):
-                raise
+    # Nếu đây là lỗi reentrant, ta bỏ qua, nếu không ta raise lỗi
+    if "populate() isn't reentrant" not in str(e):
+        raise
     
 # 3. Tạo ứng dụng Celery
 app = Celery("core")
